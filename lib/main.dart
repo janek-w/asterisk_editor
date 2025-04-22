@@ -4,11 +4,16 @@ import 'package:notesapp/bloc/editor/editor_bloc.dart';
 import 'dart:io';
 
 import 'package:notesapp/bloc/file_browser/file_browser_bloc.dart';
+import 'package:notesapp/bloc/user_settings/user_settings_cubit.dart';
+import 'package:notesapp/misc/app_themes.dart';
 import 'package:notesapp/misc/no_animation_transition.dart';
-import 'package:notesapp/pages/main_page/main_page.dart'; // Import dart:io
+import 'package:notesapp/misc/user_settings.dart';
+import 'package:notesapp/pages/main_page/main_page.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Import dart:io
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
 
   String initialPath = '.'; // Default path
   if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
@@ -17,16 +22,22 @@ void main() {
     // mobile and web support might be worked on later
   }
 
-  runApp(MyApp(initialPath: initialPath));
+  runApp(AsteriskEditor(initialPath: initialPath, prefs: prefs));
 }
 
-class MyApp extends StatelessWidget {
+class AsteriskEditor extends StatelessWidget {
   final String initialPath;
+  final SharedPreferences prefs;
 
-  const MyApp({super.key, required this.initialPath});
+  const AsteriskEditor({
+    super.key,
+    required this.initialPath,
+    required this.prefs,
+  });
 
   @override
   Widget build(BuildContext context) {
+
     return MultiBlocProvider(
       providers: [
         BlocProvider<FileBrowserBloc>(
@@ -34,26 +45,29 @@ class MyApp extends StatelessWidget {
               (context) => FileBrowserBloc()..add(LoadDirectory(initialPath)),
         ),
         BlocProvider<EditorBloc>(create: (context) => EditorBloc()),
-      ],
-      child: MaterialApp(
-        title: 'Flutter Markdown Editor',
-        theme: ThemeData(
-          primarySwatch: Colors.blue,
-          useMaterial3: true,
-          brightness: Brightness.light,
-          pageTransitionsTheme: const PageTransitionsTheme(
-            builders: {
-              TargetPlatform.android: NoAnimationPageTransitionsBuilder(),
-              TargetPlatform.iOS: NoAnimationPageTransitionsBuilder(),
-              TargetPlatform.linux: NoAnimationPageTransitionsBuilder(),
-              TargetPlatform.macOS: NoAnimationPageTransitionsBuilder(),
-              TargetPlatform.windows: NoAnimationPageTransitionsBuilder(),
-            },
-          ),
+        BlocProvider<UserSettingsCubit>(
+          create: (_) => UserSettingsCubit(prefs),
         ),
-        home: const HomePage(),
-        debugShowCheckedModeBanner: false,
+      ],
+      child: BlocBuilder<UserSettingsCubit, UserSettings>(
+        builder: (context, settings) {
+          return MaterialApp(
+            title: 'Asterisk Editor',
+            home: const HomePage(),
+            theme: AppThemes.light,
+            darkTheme: AppThemes.dark,
+            
+            themeMode: settings.themeMode, // <-- now defined
+            debugShowCheckedModeBanner: false,
+          );
+        },
       ),
     );
   }
 }
+
+var themeData = ThemeData(
+  fontFamily: 'Raleway',
+  primaryColor: Colors.blue,
+  brightness: Brightness.light,
+);
