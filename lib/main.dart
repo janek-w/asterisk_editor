@@ -1,23 +1,21 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:notesapp/bloc/editor/editor_bloc.dart';
 import 'dart:io';
 
 import 'package:notesapp/bloc/file_browser/file_browser_bloc.dart';
+import 'package:notesapp/misc/no_animation_transition.dart';
 import 'package:notesapp/pages/main_page/main_page.dart'; // Import dart:io
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
-
   String initialPath = '.'; // Default path
   if (Platform.isLinux || Platform.isMacOS || Platform.isWindows) {
-     initialPath = Directory.current.path;
+    initialPath = Directory.current.path;
   } else {
     // mobile and web support might be worked on later
   }
-
 
   runApp(MyApp(initialPath: initialPath));
 }
@@ -32,11 +30,10 @@ class MyApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider<FileBrowserBloc>(
-          create: (context) => FileBrowserBloc()..add(LoadDirectory(initialPath)),
+          create:
+              (context) => FileBrowserBloc()..add(LoadDirectory(initialPath)),
         ),
-        BlocProvider<EditorBloc>(
-          create: (context) => EditorBloc(),
-        ),
+        BlocProvider<EditorBloc>(create: (context) => EditorBloc()),
       ],
       child: MaterialApp(
         title: 'Flutter Markdown Editor',
@@ -44,6 +41,15 @@ class MyApp extends StatelessWidget {
           primarySwatch: Colors.blue,
           useMaterial3: true,
           brightness: Brightness.light,
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: NoAnimationPageTransitionsBuilder(),
+              TargetPlatform.iOS: NoAnimationPageTransitionsBuilder(),
+              TargetPlatform.linux: NoAnimationPageTransitionsBuilder(),
+              TargetPlatform.macOS: NoAnimationPageTransitionsBuilder(),
+              TargetPlatform.windows: NoAnimationPageTransitionsBuilder(),
+            },
+          ),
         ),
         home: const HomePage(),
         debugShowCheckedModeBanner: false,
