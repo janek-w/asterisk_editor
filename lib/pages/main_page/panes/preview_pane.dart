@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:markdown_widget/markdown_widget.dart';
+import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:notesapp/bloc/editor/editor_bloc.dart';
 
 class PreviewPaneWidget extends StatelessWidget {
@@ -18,14 +18,16 @@ class PreviewPaneWidget extends StatelessWidget {
       child: BlocBuilder<EditorBloc, EditorState>(
         builder: (context, state) {
           if (state is EditorLoaded) {
-            return Scrollbar(
-              controller: _previewScrollController,
-              thumbVisibility: true,
-              child: MarkdownWidget(
-                data: state.content,
-                selectable: true,
-              ),
-            );
+            return Scrollbar(  
+  controller: _previewScrollController,  
+  thumbVisibility: true,  
+  child: Markdown(                // not MarkdownWidget  
+    data: state.content,  
+    selectable: true,             // same flag is supported  
+    controller: _previewScrollController,          // one controller, zero drama  
+    // optional: styleSheet, syntaxHighlighter, etc.  
+  ),  
+);  
           } else if (state is EditorLoading) {
             return const Center(child: Text("Loading preview..."));
           } else if (state is EditorError) {

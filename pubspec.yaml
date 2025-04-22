@@ -38,6 +38,7 @@ dependencies:
 
   # UI & Layout
   markdown_widget: ^2.3.2+6      # For rendering Markdown preview
+  flutter_markdown: ^0.7.7
   multi_split_view: ^3.6.0    # For resizable panes
   flutter_treeview: ^1.0.7+1  # For the file browser tree (requires dart:io)
 
