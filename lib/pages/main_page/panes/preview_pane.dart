@@ -21,11 +21,11 @@ class PreviewPaneWidget extends StatelessWidget {
             return Scrollbar(  
   controller: _previewScrollController,  
   thumbVisibility: true,  
-  child: Markdown(                // not MarkdownWidget  
-    data: state.content,  
-    selectable: true,             // same flag is supported  
-    controller: _previewScrollController,          // one controller, zero drama  
-    // optional: styleSheet, syntaxHighlighter, etc.  
+  child: Markdown(
+    data: state.content.replaceAll('\n', '&nbsp; \n'),  
+    selectable: true,
+    controller: _previewScrollController,
+    softLineBreak: true,
   ),  
 );  
           } else if (state is EditorLoading) {

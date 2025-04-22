@@ -41,6 +41,7 @@ dependencies:
   flutter_markdown: ^0.7.7
   multi_split_view: ^3.6.0    # For resizable panes
   flutter_treeview: ^1.0.7+1  # For the file browser tree (requires dart:io)
+  flutter_markdown_plus: ^1.0.3
 
   # Utilities
   path: ^1.9.1                # Path manipulation
