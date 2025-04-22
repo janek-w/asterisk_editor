@@ -1,4 +1,4 @@
-name: asterisk_editor
+name: notesapp
 description: "A new Flutter project."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -31,9 +31,30 @@ dependencies:
   flutter:
     sdk: flutter
 
+
+
+  # For Markdown <-> Delta conversion (via HTML intermediary)
+  flutter_bloc: ^9.1.0
+  bloc: ^9.0.0
+  equatable: ^2.0.7
+
+  # UI & Layout
+  markdown_widget: ^2.3.2+6      # For rendering Markdown preview
+  multi_split_view: ^3.6.0    # For resizable panes
+  flutter_treeview: ^1.0.7+1  # For the file browser tree (requires dart:io)
+
+  # Utilities
+  path: ^1.9.1                # Path manipulation
+  path_provider: ^2.1.5      # To find common directories (optional, but helpful)
+  rxdart: ^0.28.0  
+
+
+
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  file_selector: ^1.0.3
+  dropdown_button2: ^2.3.9
 
 dev_dependencies:
   flutter_test:
