@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:notesapp/bloc/editor/editor_bloc.dart';
 import 'package:notesapp/pages/main_page/panes/editing_pane.dart';
@@ -216,30 +217,51 @@ class _HomePageState extends State<HomePage> {
           ),
         ],
       ),
-      body: MultiSplitView(
-        axis: Axis.horizontal,
-        controller: _splitViewController,
-        pushDividers: true,
-        dividerBuilder: (
-          axis,
-          index,
-          resizable,
-          dragging,
-          highlighted,
-          themeData,
-        ) {
-          return Divider(
-            color:
-                highlighted ? Colors.blue : const Color.fromARGB(255, 0, 0, 0),
-            thickness: 50,
-            indent: 3,
-            height: 1,
-            endIndent: 3,
-          );
+      body: Shortcuts(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.keyS, control: true):
+            SaveFile(),
+      },
+      child: Actions(
+        actions: <Type, Action<Intent>>{
+          SaveFile: CallbackAction<SaveFile>(
+            onInvoke:
+                (SaveFile) => setState(() {
+                  //Todo: save file
+                  context.read<EditorBloc>().add(SaveFileRequested());
+                }),
+          ),
         },
-        // minimalWeight: 0.1,
-        // minimalSize: 150,
+        child: MultiSplitView(
+          axis: Axis.horizontal,
+          controller: _splitViewController,
+          pushDividers: true,
+          dividerBuilder: (
+            axis,
+            index,
+            resizable,
+            dragging,
+            highlighted,
+            themeData,
+          ) {
+            return Divider(
+              color:
+                  highlighted ? Colors.blue : const Color.fromARGB(255, 0, 0, 0),
+              thickness: 50,
+              indent: 3,
+              height: 1,
+              endIndent: 3,
+            );
+          },
+          // minimalWeight: 0.1,
+          // minimalSize: 150,
+        ),
       ),
+    ),
     );
   }
+}
+
+class SaveFile extends Intent {
+  const SaveFile();
 }
