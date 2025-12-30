@@ -3,11 +3,14 @@ import 'dart:io';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:path/path.dart' as p;
+import '../../services/logger.dart';
 
 part 'file_browser_event.dart';
 part 'file_browser_state.dart';
 
 class FileBrowserBloc extends Bloc<FileBrowserEvent, FileBrowserState> {
+  final TaggedAppLogger _logger = AppLogger().withTag('FileBrowser');
+
   FileBrowserBloc() : super(FileBrowserInitial()) {
     on<LoadDirectory>(_onLoadDirectory);
     on<SelectFile>(_onSelectFile);
@@ -34,7 +37,7 @@ class FileBrowserBloc extends Bloc<FileBrowserEvent, FileBrowserState> {
           entities.add(entity);
         },
         onError: (e) {
-          print("Error listing directory: $e");
+          _logger.error("Error listing directory: $e");
           if (!completer.isCompleted) {
             completer.completeError(e);
           }
@@ -78,7 +81,9 @@ class FileBrowserBloc extends Bloc<FileBrowserEvent, FileBrowserState> {
       if(fileExistsInList) {
           emit(currentState.copyWith(selectedFile: event.file));
       } else {
-          print("Warning: Selected file ${event.file.path} not found in current directory list ${currentState.currentPath}");
+          _logger.warning(
+            "Selected file ${event.file.path} not found in current directory list ${currentState.currentPath}",
+          );
       }
     }
   }

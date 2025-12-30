@@ -2,11 +2,13 @@ import 'dart:async';
 import 'dart:io';
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
+import '../../services/logger.dart';
 
 part 'editor_event.dart';
 part 'editor_state.dart';
 
 class EditorBloc extends Bloc<EditorEvent, EditorState> {
+  final TaggedAppLogger _logger = AppLogger().withTag('EditorBloc');
   String _originalContent = '';
 
   EditorBloc() : super(const EditorInitial()) {
@@ -22,7 +24,7 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
     // Add check for unsaved changes before loading a new file
     if (state is EditorLoaded && (state as EditorLoaded).isDirty) {
       emit(EditorError("Unsaved changes in the current file.", fileAttempted: (state as EditorLoaded).currentFile));
-      print("Warning: Cannot load ${event.file.path}. Unsaved changes exist.");
+      _logger.warning("Cannot load ${event.file.path}. Unsaved changes exist.");
       return; // Prevent loading the new file until user confirms
     }
 

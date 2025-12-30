@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:notesapp/services/markdown_parser.dart';
 import 'package:notesapp/services/text_span_renderer.dart';
+import '../../../config/app_config.dart';
 
 /// Custom TextEditingController that builds styled TextSpans from markdown.
 class MarkdownTextEditingController extends TextEditingController {
@@ -92,6 +93,9 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
   
   /// Flag to prevent infinite loops
   bool _isUpdatingFromOriginal = false;
+  
+  /// Last known cursor position from original controller
+  int _lastKnownCursorOffset = 0;
 
   @override
   void initState() {
@@ -126,7 +130,11 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
     super.dispose();
   }
 
-  /// Handle changes from the original controller (e.g., from Bloc)
+  /// Handle changes from the original controller (e.g., from Bloc).
+  ///
+  /// Updates the markdown controller while attempting to preserve cursor position.
+  /// When text changes externally, we try to keep the cursor at the
+  /// same relative position if possible.
   void _onOriginalControllerChanged() {
     if (_isUpdatingFromOriginal) return;
     
@@ -135,10 +143,35 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
     
     // Only update if the text actually changed (avoid infinite loop)
     if (originalText != markdownText) {
+      // Store current cursor position before update
+      _lastKnownCursorOffset = widget.controller.selection.baseOffset;
+      
       _isUpdatingFromOriginal = true;
       _markdownController.text = originalText;
       _isUpdatingFromOriginal = false;
+      
+      // Try to restore cursor position after text update
+      // Use WidgetsBinding.instance.addPostFrameCallback to ensure
+      // the text field has finished updating before we set the cursor
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _restoreCursorPosition();
+        }
+      });
     }
+  }
+  
+  /// Restore cursor position after text update.
+  ///
+  /// Attempts to place the cursor at the last known position,
+  /// clamped to the new text length.
+  void _restoreCursorPosition() {
+    final textLength = _markdownController.text.length;
+    final clampedOffset = _lastKnownCursorOffset.clamp(0, textLength);
+    
+    _markdownController.selection = TextSelection.collapsed(
+      offset: clampedOffset,
+    );
   }
 
   @override
@@ -251,7 +284,7 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
       message: tooltip,
       child: IconButton(
         icon: Icon(icon),
-        iconSize: 20,
+        iconSize: AppConfig.toolbarIconSize,
         splashRadius: 20,
         onPressed: onPressed,
         padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -263,7 +296,11 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
     );
   }
 
-  /// Insert markdown syntax at the current cursor position
+  /// Insert markdown syntax at the current cursor position.
+  ///
+  /// Inserts the specified [prefix] and [suffix] around the selected text
+  /// (or at cursor position if no text is selected). Updates the cursor
+  /// position to be after the inserted prefix and selected text.
   void _insertMarkdown(String prefix, String suffix) {
     final controller = _markdownController;
     final selection = controller.selection;
@@ -284,13 +321,16 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
     // Calculate new cursor position
     final newCursorOffset = selection.start + prefix.length + selectedText.length;
     
-    // Update the controller
+    // Update the controller with new text and cursor position
     controller.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(
         offset: newCursorOffset.clamp(0, newText.length),
       ),
     );
+    
+    // Store the new cursor position for future reference
+    _lastKnownCursorOffset = newCursorOffset;
     
     // Force focus back to the editor
     widget.focusNode.requestFocus();

@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../config/app_config.dart';
 import 'markdown_parser.dart';
 
 /// Renderer that converts markdown tokens into styled TextSpan objects.
@@ -18,8 +19,8 @@ class TextSpanRenderer {
 
   const TextSpanRenderer({
     this.baseStyle = const TextStyle(
-      fontSize: 16,
-      height:1.5,
+      fontSize: AppConfig.defaultFontSize,
+      height: 1.5,
     ),
     this.headerColor,
     this.codeBackgroundColor,
@@ -81,65 +82,77 @@ class TextSpanRenderer {
 
     final spans = <TextSpan>[];
     int lastEnd = 0;
-
-    // Style for markdown syntax characters (subtle gray, slightly smaller)
-    final syntaxStyle = baseTextStyle.copyWith(
-      color: Colors.grey.shade600,
-      fontSize: (baseTextStyle.fontSize ?? 16) * 0.85,
-    );
+    final syntaxStyle = _createSyntaxStyle(baseTextStyle);
 
     for (final token in tokens) {
-      // Add unstyled text before this token
-      if (token.start > lastEnd) {
-        spans.add(TextSpan(
-          text: text.substring(lastEnd, token.start),
-          style: baseTextStyle,
-        ));
-      }
-
-      // Determine which syntax characters to show subtly
-      final syntaxChars = _getSyntaxCharsForToken(token);
-      
-      // Add syntax characters with subtle styling
-      if (syntaxChars.prefix.isNotEmpty) {
-        spans.add(TextSpan(
-          text: syntaxChars.prefix,
-          style: syntaxStyle,
-        ));
-      }
-
-      // Add styled token content
-      final styledSpan = _createSpanForToken(token);
-      spans.add(TextSpan(
-        text: styledSpan.text,
-        style: baseTextStyle.merge(styledSpan.style),
-        children: styledSpan.children,
-        recognizer: styledSpan.recognizer,
-      ));
-
-      // Add syntax suffix characters with subtle styling
-      if (syntaxChars.suffix.isNotEmpty) {
-        spans.add(TextSpan(
-          text: syntaxChars.suffix,
-          style: syntaxStyle,
-        ));
-      }
-
+      spans.addAll(_buildUnstyledText(text, lastEnd, token.start, baseTextStyle));
+      spans.addAll(_buildTokenWithSyntax(token, baseTextStyle, syntaxStyle));
       lastEnd = token.end;
     }
 
-    // Add remaining unstyled text after the last token
-    if (lastEnd < text.length) {
-      spans.add(TextSpan(
-        text: text.substring(lastEnd),
-        style: baseTextStyle,
-      ));
-    }
-
+    spans.addAll(_buildUnstyledText(text, lastEnd, text.length, baseTextStyle));
     return TextSpan(style: baseTextStyle, children: spans);
   }
 
+  /// Create the style for markdown syntax characters.
+  ///
+  /// Syntax characters are styled subtly with gray color and slightly smaller font
+  /// to differentiate them from actual content while maintaining readability.
+  TextStyle _createSyntaxStyle(TextStyle baseTextStyle) {
+    return baseTextStyle.copyWith(
+      color: AppConfig.syntaxTextColor,
+      fontSize: (baseTextStyle.fontSize ?? AppConfig.defaultFontSize) * AppConfig.syntaxFontSizeMultiplier,
+    );
+  }
+
+  /// Build unstyled text spans for the range [start, end).
+  ///
+  /// Returns an empty list if start >= end.
+  List<TextSpan> _buildUnstyledText(
+    String text,
+    int start,
+    int end,
+    TextStyle style,
+  ) {
+    if (start >= end) return [];
+    return [TextSpan(text: text.substring(start, end), style: style)];
+  }
+
+  /// Build a token with its surrounding syntax characters.
+  ///
+  /// Creates spans for syntax prefix, the styled token content, and syntax suffix.
+  /// Only includes syntax spans if the corresponding characters are present.
+  List<TextSpan> _buildTokenWithSyntax(
+    MarkdownToken token,
+    TextStyle baseStyle,
+    TextStyle syntaxStyle,
+  ) {
+    final syntaxChars = _getSyntaxCharsForToken(token);
+    final styledSpan = _createSpanForToken(token);
+    final spans = <TextSpan>[];
+
+    if (syntaxChars.prefix.isNotEmpty) {
+      spans.add(TextSpan(text: syntaxChars.prefix, style: syntaxStyle));
+    }
+
+    spans.add(TextSpan(
+      text: styledSpan.text,
+      style: baseStyle.merge(styledSpan.style),
+      children: styledSpan.children,
+      recognizer: styledSpan.recognizer,
+    ));
+
+    if (syntaxChars.suffix.isNotEmpty) {
+      spans.add(TextSpan(text: syntaxChars.suffix, style: syntaxStyle));
+    }
+
+    return spans;
+  }
+
   /// Get the syntax characters (prefix/suffix) for a token.
+  ///
+  /// Returns the markdown syntax characters that should be displayed
+  /// around the token content (e.g., '**' for bold, '#' for headers).
   _SyntaxChars _getSyntaxCharsForToken(MarkdownToken token) {
     switch (token.type) {
       case 'header':
@@ -165,6 +178,9 @@ class TextSpanRenderer {
   }
 
   /// Create a TextSpan for a specific markdown token.
+  ///
+  /// Dispatches to the appropriate style method based on token type.
+  /// Returns a basic text span for unknown token types.
   TextSpan _createSpanForToken(MarkdownToken token) {
     switch (token.type) {
       case 'header':
@@ -188,6 +204,9 @@ class TextSpanRenderer {
   }
 
   /// Create a styled TextSpan for a header.
+  ///
+  /// The font size scales based on the header level (1-6),
+  /// with H1 being the largest and H6 matching the base font size.
   TextSpan _createHeaderSpan(MarkdownToken token) {
     final level = token.metadata['level'] as int? ?? 1;
     return TextSpan(
@@ -197,6 +216,9 @@ class TextSpanRenderer {
   }
 
   /// Create a styled TextSpan for bold text.
+  ///
+  /// Bold text uses a bold font weight while inheriting other
+  /// properties from the base style.
   TextSpan _createBoldSpan(MarkdownToken token) {
     return TextSpan(
       text: token.content,
@@ -205,6 +227,9 @@ class TextSpanRenderer {
   }
 
   /// Create a styled TextSpan for italic text.
+  ///
+  /// Italic text uses an italic font style while inheriting other
+  /// properties from the base style.
   TextSpan _createItalicSpan(MarkdownToken token) {
     return TextSpan(
       text: token.content,
@@ -213,6 +238,9 @@ class TextSpanRenderer {
   }
 
   /// Create a styled TextSpan for inline code.
+  ///
+  /// Code uses a monospace font with a background color
+  /// to distinguish it from regular text.
   TextSpan _createCodeSpan(MarkdownToken token) {
     return TextSpan(
       text: token.content,
@@ -221,6 +249,9 @@ class TextSpanRenderer {
   }
 
   /// Create a styled TextSpan for a link.
+  ///
+  /// Links use the configured link color and have an underline decoration.
+  /// Note: Actual link navigation requires a gesture recognizer at the widget level.
   TextSpan _createLinkSpan(MarkdownToken token) {
     return TextSpan(
       text: token.content,
@@ -231,15 +262,22 @@ class TextSpanRenderer {
   }
 
   /// Create a styled TextSpan for a list item.
+  ///
+  /// List items use the content directly (without adding bullet prefix).
+  /// The bullet/number prefix is rendered separately by the syntax styling
+  /// in the visible syntax mode, so we don't add it here.
+  /// Both ordered and unordered lists use the same approach.
   TextSpan _createListSpan(MarkdownToken token) {
-    final bullet = token.type == 'list_ordered' ? '• ' : '• ';
     return TextSpan(
-      text: '$bullet${token.content}',
+      text: token.content,
       style: baseStyle,
     );
   }
 
   /// Create a styled TextSpan for strikethrough text.
+  ///
+  /// Strikethrough text has a line-through decoration
+  /// while inheriting other properties from the base style.
   TextSpan _createStrikethroughSpan(MarkdownToken token) {
     return TextSpan(
       text: token.content,
@@ -250,6 +288,9 @@ class TextSpanRenderer {
   // Style getters
 
   /// Get the text style for a header of the given level (1-6).
+  ///
+  /// Font size scales based on header level, with H1 being 2x the base size
+  /// and H6 matching the base size. All headers use bold font weight.
   TextStyle getHeaderStyle(int level) {
     final fontSize = _getHeaderFontSize(level);
     return baseStyle.copyWith(
@@ -261,6 +302,8 @@ class TextSpanRenderer {
   }
 
   /// Get the text style for bold text.
+  ///
+  /// Applies bold font weight to the base style.
   TextStyle getBoldStyle() {
     return baseStyle.copyWith(
       fontWeight: FontWeight.bold,
@@ -268,6 +311,8 @@ class TextSpanRenderer {
   }
 
   /// Get the text style for italic text.
+  ///
+  /// Applies italic font style to the base style.
   TextStyle getItalicStyle() {
     return baseStyle.copyWith(
       fontStyle: FontStyle.italic,
@@ -275,24 +320,31 @@ class TextSpanRenderer {
   }
 
   /// Get the text style for inline code.
+  ///
+  /// Uses monospace font with a background color and slightly smaller font size.
+  /// Falls back to default background colors if none is specified.
   TextStyle getCodeStyle() {
     return baseStyle.copyWith(
       fontFamily: 'monospace',
-      backgroundColor: codeBackgroundColor ?? const Color(0xFFE0E0E0),
+      backgroundColor: codeBackgroundColor ?? AppConfig.codeBackgroundColorLight,
       fontSize: baseStyle.fontSize! * 0.9,
       height: 1.4,
     );
   }
 
   /// Get the text style for links.
+  ///
+  /// Uses the configured link color (or default blue) with underline decoration.
   TextStyle getLinkStyle() {
     return baseStyle.copyWith(
-      color: linkColor ?? Colors.blue,
+      color: linkColor ?? AppConfig.linkColorLight,
       decoration: TextDecoration.underline,
     );
   }
 
   /// Get the text style for strikethrough text.
+  ///
+  /// Applies line-through decoration to the base style.
   TextStyle getStrikethroughStyle() {
     return baseStyle.copyWith(
       decoration: TextDecoration.lineThrough,
@@ -300,24 +352,13 @@ class TextSpanRenderer {
   }
 
   /// Get the font size for a header of the given level.
+  ///
+  /// Uses the centralized configuration for header multipliers.
+  /// Falls back to H1 size for invalid levels.
   double _getHeaderFontSize(int level) {
-    final baseSize = baseStyle.fontSize ?? 16;
-    switch (level) {
-      case 1:
-        return baseSize * 2.0;
-      case 2:
-        return baseSize * 1.75;
-      case 3:
-        return baseSize * 1.5;
-      case 4:
-        return baseSize * 1.25;
-      case 5:
-        return baseSize * 1.1;
-      case 6:
-        return baseSize * 1.0;
-      default:
-        return baseSize * 2.0;
-    }
+    final baseSize = baseStyle.fontSize ?? AppConfig.defaultFontSize;
+    final multiplier = AppConfig.getHeaderMultiplier(level);
+    return baseSize * multiplier;
   }
 }
 
@@ -332,13 +373,19 @@ class _SyntaxChars {
 /// Extension to provide theme-aware renderer instances.
 extension TextSpanRendererTheme on BuildContext {
   /// Create a TextSpanRenderer with theme-appropriate colors.
+  ///
+  /// Automatically selects appropriate colors based on the current theme
+  /// brightness (light or dark mode).
   TextSpanRenderer createThemedRenderer() {
     final theme = Theme.of(this);
+    final isDark = theme.brightness == Brightness.dark;
+    
     return TextSpanRenderer(
-      baseStyle: theme.textTheme.bodyMedium ?? const TextStyle(fontSize: 16),
+      baseStyle: theme.textTheme.bodyMedium ??
+                 TextStyle(fontSize: AppConfig.defaultFontSize),
       headerColor: theme.textTheme.headlineMedium?.color,
-      codeBackgroundColor: theme.colorScheme.surfaceContainerHighest,
-      linkColor: theme.colorScheme.primary,
+      codeBackgroundColor: AppConfig.getCodeBackgroundColor(isDark),
+      linkColor: AppConfig.getLinkColor(isDark),
       listBulletColor: theme.textTheme.bodyMedium?.color,
     );
   }

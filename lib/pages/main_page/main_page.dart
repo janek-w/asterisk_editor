@@ -11,12 +11,58 @@ import 'package:notesapp/pages/settings_page/settings_page.dart';
 import 'package:path/path.dart' as p;
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:multi_split_view/multi_split_view.dart';
+import '../../config/app_config.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
   @override
   State<HomePage> createState() => _HomePageState();
+}
+
+/// Editor view mode enumeration for the main page layout.
+///
+/// Defines different ways the editor can be displayed:
+/// - [splitPane]: Shows file browser, editor, and preview in split view
+/// - [plainEditor]: Shows file browser and plain text editor
+/// - [wysiwygEditor]: Shows file browser and WYSIWYG markdown editor
+/// - [previewOnly]: Shows file browser and preview pane only
+enum EditorViewMode {
+  splitPane,
+  plainEditor,
+  wysiwygEditor,
+  previewOnly;
+
+  /// Get the display name for this mode
+  String get displayName {
+    switch (this) {
+      case EditorViewMode.splitPane:
+        return 'Split Pane';
+      case EditorViewMode.plainEditor:
+        return 'Plain Editor';
+      case EditorViewMode.wysiwygEditor:
+        return 'WYSIWYG Editor';
+      case EditorViewMode.previewOnly:
+        return 'Preview Only';
+    }
+  }
+
+  /// Get the list of all available modes
+  static List<EditorViewMode> get allValues => EditorViewMode.values;
+
+  /// Convert to the corresponding EditorMode enum
+  EditorMode toEditorMode() {
+    switch (this) {
+      case EditorViewMode.splitPane:
+        return EditorMode.plain;
+      case EditorViewMode.plainEditor:
+        return EditorMode.plain;
+      case EditorViewMode.wysiwygEditor:
+        return EditorMode.wysiwyg;
+      case EditorViewMode.previewOnly:
+        return EditorMode.preview;
+    }
+  }
 }
 
 class _HomePageState extends State<HomePage> {
@@ -26,13 +72,9 @@ class _HomePageState extends State<HomePage> {
   final ScrollController _wysiwygScrollController = ScrollController();
   final FocusNode _wysiwygFocusNode = FocusNode();
   late MultiSplitViewController _splitViewController;
-  final List<String> selectableModes = [
-    'Split Pane',
-    'Plain Editor',
-    'WYSIWYG Editor',
-    'Preview Only',
-  ];
-  String selectedMode = 'Split Pane';
+
+  /// Currently selected editor view mode
+  EditorViewMode selectedMode = EditorViewMode.splitPane;
 
   File? _currentlyEditingFile;
 
@@ -103,6 +145,70 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  /// Build the appropriate split view areas based on the selected mode.
+  ///
+  /// Returns a list of [Area] objects configured with the correct flex values
+  /// and widgets for the current [selectedMode].
+  List<Area> _buildSplitViewAreas(
+    Widget fileBrowserPane,
+    Widget editorPane,
+    Widget wysiwygPane,
+    Widget previewPane,
+  ) {
+    final fileBrowserArea = Area(
+      builder: (context, area) => fileBrowserPane,
+      flex: AppConfig.fileBrowserFlex,
+      min: AppConfig.splitViewMinWidth,
+    );
+
+    switch (selectedMode) {
+      case EditorViewMode.splitPane:
+        return [
+          fileBrowserArea,
+          Area(
+            builder: (context, area) => editorPane,
+            flex: AppConfig.editorPaneFlex,
+            min: AppConfig.splitViewMinWidth,
+          ),
+          Area(
+            builder: (context, area) => previewPane,
+            flex: AppConfig.previewPaneFlex,
+            min: AppConfig.splitViewMinWidth,
+          ),
+        ];
+
+      case EditorViewMode.plainEditor:
+        return [
+          fileBrowserArea,
+          Area(
+            builder: (context, area) => editorPane,
+            flex: AppConfig.editorPaneSingleFlex,
+            min: AppConfig.splitViewMinWidth,
+          ),
+        ];
+
+      case EditorViewMode.wysiwygEditor:
+        return [
+          fileBrowserArea,
+          Area(
+            builder: (context, area) => wysiwygPane,
+            flex: AppConfig.editorPaneSingleFlex,
+            min: AppConfig.splitViewMinWidth,
+          ),
+        ];
+
+      case EditorViewMode.previewOnly:
+        return [
+          fileBrowserArea,
+          Area(
+            builder: (context, area) => previewPane,
+            flex: AppConfig.previewPaneSingleFlex,
+            min: AppConfig.splitViewMinWidth,
+          ),
+        ];
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget fileBrowserPane = FileBrowserPaneWidget();
@@ -120,21 +226,12 @@ class _HomePageState extends State<HomePage> {
     );
 
     _splitViewController = MultiSplitViewController(
-      areas:
-      (selectedMode == 'Split Pane') ? [
-        Area(builder: (context, area) => fileBrowserPane, flex: 0.2, min: 0.1),
-        Area(builder: (context, area) => editorPane, flex: 0.4, min: 0.1),
-        Area(builder: (context, area) => previewPane, flex: 0.4, min: 0.1),
-      ] : (selectedMode == 'Plain Editor') ? [
-        Area(builder: (context, area) => fileBrowserPane, flex: 0.2, min: 0.1),
-        Area(builder: (context, area) => editorPane, flex: 0.8, min: 0.1),
-      ] : (selectedMode == 'WYSIWYG Editor') ? [
-        Area(builder: (context, area) => fileBrowserPane, flex: 0.2, min: 0.1),
-        Area(builder: (context, area) => wysiwygPane, flex: 0.8, min: 0.1),
-      ] : [
-        Area(builder: (context, area) => fileBrowserPane, flex: 0.2, min: 0.1),
-        Area(builder: (context, area) => previewPane, flex: 0.8, min: 0.1),
-      ]
+      areas: _buildSplitViewAreas(
+        fileBrowserPane,
+        editorPane,
+        wysiwygPane,
+        previewPane,
+      ),
     );
 
     return Scaffold(
@@ -182,8 +279,8 @@ class _HomePageState extends State<HomePage> {
                 currentActions.add(
                   const Padding(
                     padding: EdgeInsets.symmetric(
-                      horizontal: 16.0,
-                    ), // Adjust padding
+                      horizontal: AppConfig.actionButtonPadding,
+                    ),
                     child: SizedBox(
                       width: 20,
                       height: 20,
@@ -207,23 +304,24 @@ class _HomePageState extends State<HomePage> {
                 ),
               );
               currentActions.add(
-                DropdownButton2(
+                DropdownButton2<EditorViewMode>(
                   value: selectedMode,
-                  items: selectableModes.map((item) {
-                    return DropdownMenuItem(
-                      value: item,
-                      child: Text(item),
+                  items: EditorViewMode.allValues.map((mode) {
+                    return DropdownMenuItem<EditorViewMode>(
+                      value: mode,
+                      child: Text(mode.displayName),
                     );
                   }).toList(),
                   onChanged: (value) {
-                    final newMode = value as String;
-                    setState(() {
-                      selectedMode = newMode;
-                    });
-                    // Notify the Bloc about the mode change
-                    context.read<EditorBloc>().add(
-                      ToggleEditorMode(_stringToMode(newMode)),
-                    );
+                    if (value != null) {
+                      setState(() {
+                        selectedMode = value;
+                      });
+                      // Notify the Bloc about the mode change
+                      context.read<EditorBloc>().add(
+                        ToggleEditorMode(value.toEditorMode()),
+                      );
+                    }
                   },
                   hint: const Text('Actions'),
                 ),
@@ -264,12 +362,11 @@ class _HomePageState extends State<HomePage> {
             themeData,
           ) {
             return Divider(
-              color:
-                  highlighted ? Colors.blue : const Color.fromARGB(255, 0, 0, 0),
-              thickness: 50,
-              indent: 3,
-              height: 1,
-              endIndent: 3,
+              color: highlighted ? Colors.blue : const Color.fromARGB(255, 0, 0, 0),
+              thickness: AppConfig.resizableDividerThickness,
+              indent: AppConfig.dividerIndent,
+              height: AppConfig.dividerThickness,
+              endIndent: AppConfig.dividerEndIndent,
             );
           },
           // minimalWeight: 0.1,
@@ -283,19 +380,4 @@ class _HomePageState extends State<HomePage> {
 
 class SaveFile extends Intent {
   const SaveFile();
-}
-
-/// Convert mode string to EditorMode enum
-EditorMode _stringToMode(String modeString) {
-  switch (modeString) {
-    case 'Plain Editor':
-      return EditorMode.plain;
-    case 'WYSIWYG Editor':
-      return EditorMode.wysiwyg;
-    case 'Preview Only':
-      return EditorMode.preview;
-    case 'Split Pane':
-    default:
-      return EditorMode.plain;
-  }
 }
