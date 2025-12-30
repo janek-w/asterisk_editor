@@ -13,6 +13,7 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
     on<LoadFileRequested>(_onLoadFileRequested);
     on<ContentChanged>(_onContentChanged);
     on<SaveFileRequested>(_onSaveFileRequested);
+    on<ToggleEditorMode>(_onToggleEditorMode);
   }
 
   Future<void> _onLoadFileRequested(
@@ -104,6 +105,16 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
     } else {
       // Cannot save if no file is loaded
       emit(const EditorError("No file loaded to save."));
+    }
+   }
+
+  void _onToggleEditorMode(
+    ToggleEditorMode event,
+    Emitter<EditorState> emit,
+  ) {
+    if (state is EditorLoaded) {
+      final currentState = state as EditorLoaded;
+      emit(currentState.copyWith(editorMode: event.mode));
     }
   }
 }

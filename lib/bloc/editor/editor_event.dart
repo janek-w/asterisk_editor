@@ -1,6 +1,13 @@
 
 part of 'editor_bloc.dart';
 
+/// Editor mode enumeration
+enum EditorMode {
+  plain,
+  wysiwyg,
+  preview,
+}
+
 abstract class EditorEvent extends Equatable {
   const EditorEvent();
 
@@ -27,3 +34,12 @@ class ContentChanged extends EditorEvent {
 }
 
 class SaveFileRequested extends EditorEvent {} // Add parameters if needed (e.g., path)
+
+class ToggleEditorMode extends EditorEvent {
+  final EditorMode mode;
+
+  const ToggleEditorMode(this.mode);
+
+  @override
+  List<Object> get props => [mode];
+}

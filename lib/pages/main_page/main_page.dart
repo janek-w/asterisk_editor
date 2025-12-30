@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:notesapp/bloc/editor/editor_bloc.dart';
 import 'package:notesapp/pages/main_page/panes/editing_pane.dart';
+import 'package:notesapp/pages/main_page/panes/wysiwyg_editing_pane.dart';
 import 'package:notesapp/pages/main_page/panes/file_browser_pane.dart';
 import 'package:notesapp/pages/main_page/panes/preview_pane.dart';
 import 'package:notesapp/pages/settings_page/settings_page.dart';
@@ -22,10 +23,13 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _textEditingController = TextEditingController();
   final ScrollController _editorScrollController = ScrollController();
   final ScrollController _previewScrollController = ScrollController();
+  final ScrollController _wysiwygScrollController = ScrollController();
+  final FocusNode _wysiwygFocusNode = FocusNode();
   late MultiSplitViewController _splitViewController;
   final List<String> selectableModes = [
     'Split Pane',
     'Plain Editor',
+    'WYSIWYG Editor',
     'Preview Only',
   ];
   String selectedMode = 'Split Pane';
@@ -94,6 +98,8 @@ class _HomePageState extends State<HomePage> {
     _textEditingController.dispose();
     _editorScrollController.dispose();
     _previewScrollController.dispose();
+    _wysiwygScrollController.dispose();
+    _wysiwygFocusNode.dispose();
     super.dispose();
   }
 
@@ -104,12 +110,17 @@ class _HomePageState extends State<HomePage> {
       editorScrollController: _editorScrollController,
       textEditingController: _textEditingController,
     );
+    Widget wysiwygPane = WysiwygEditorWidget(
+      controller: _textEditingController,
+      scrollController: _wysiwygScrollController,
+      focusNode: _wysiwygFocusNode,
+    );
     Widget previewPane = PreviewPaneWidget(
       previewScrollController: _previewScrollController,
     );
 
     _splitViewController = MultiSplitViewController(
-      areas: 
+      areas:
       (selectedMode == 'Split Pane') ? [
         Area(builder: (context, area) => fileBrowserPane, flex: 0.2, min: 0.1),
         Area(builder: (context, area) => editorPane, flex: 0.4, min: 0.1),
@@ -117,6 +128,9 @@ class _HomePageState extends State<HomePage> {
       ] : (selectedMode == 'Plain Editor') ? [
         Area(builder: (context, area) => fileBrowserPane, flex: 0.2, min: 0.1),
         Area(builder: (context, area) => editorPane, flex: 0.8, min: 0.1),
+      ] : (selectedMode == 'WYSIWYG Editor') ? [
+        Area(builder: (context, area) => fileBrowserPane, flex: 0.2, min: 0.1),
+        Area(builder: (context, area) => wysiwygPane, flex: 0.8, min: 0.1),
       ] : [
         Area(builder: (context, area) => fileBrowserPane, flex: 0.2, min: 0.1),
         Area(builder: (context, area) => previewPane, flex: 0.8, min: 0.1),
@@ -202,9 +216,14 @@ class _HomePageState extends State<HomePage> {
                     );
                   }).toList(),
                   onChanged: (value) {
+                    final newMode = value as String;
                     setState(() {
-                      selectedMode = value as String;
+                      selectedMode = newMode;
                     });
+                    // Notify the Bloc about the mode change
+                    context.read<EditorBloc>().add(
+                      ToggleEditorMode(_stringToMode(newMode)),
+                    );
                   },
                   hint: const Text('Actions'),
                 ),
@@ -264,4 +283,19 @@ class _HomePageState extends State<HomePage> {
 
 class SaveFile extends Intent {
   const SaveFile();
+}
+
+/// Convert mode string to EditorMode enum
+EditorMode _stringToMode(String modeString) {
+  switch (modeString) {
+    case 'Plain Editor':
+      return EditorMode.plain;
+    case 'WYSIWYG Editor':
+      return EditorMode.wysiwyg;
+    case 'Preview Only':
+      return EditorMode.preview;
+    case 'Split Pane':
+    default:
+      return EditorMode.plain;
+  }
 }

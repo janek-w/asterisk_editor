@@ -19,25 +19,29 @@ class EditorLoaded extends EditorState {
   final File currentFile;
   final String content;
   final bool isDirty; // Has unsaved changes
+  final EditorMode editorMode; // Current editor mode
 
   const EditorLoaded({
     required this.currentFile,
     required this.content,
     this.isDirty = false,
+    this.editorMode = EditorMode.plain,
   });
 
   @override
-  List<Object?> get props => [currentFile.path, content, isDirty]; // Use path for comparison
+  List<Object?> get props => [currentFile.path, content, isDirty, editorMode]; // Use path for comparison
 
   EditorLoaded copyWith({
     File? currentFile,
     String? content,
     bool? isDirty,
+    EditorMode? editorMode,
   }) {
     return EditorLoaded(
       currentFile: currentFile ?? this.currentFile,
       content: content ?? this.content,
       isDirty: isDirty ?? this.isDirty,
+      editorMode: editorMode ?? this.editorMode,
     );
   }
 }
