@@ -1,5 +1,5 @@
-name: notesapp
-description: "A new Flutter project."
+name: asterisk_editor
+description: "A modern Markdown editor for desktop platforms."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -19,7 +19,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.8.0-265.0.dev
+  sdk: ^3.8.0
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -32,29 +32,28 @@ dependencies:
     sdk: flutter
 
 
-  flutter_bloc: ^9.1.0
-  bloc: ^9.0.0
-  equatable: ^2.0.7
+  flutter_bloc: ^9.1.1
+  bloc: ^9.2.0
+  equatable: ^2.0.8
 
   # UI & Layout
-  markdown_widget: ^2.3.2+6      # For rendering Markdown preview
-  flutter_markdown: ^0.7.7
-  multi_split_view: ^3.6.0    # For resizable panes
+  markdown_widget: ^2.3.2+8      # For rendering Markdown preview
+  multi_split_view: ^3.6.1    # For resizable panes
   flutter_treeview: ^1.0.7+1  # For the file browser tree (requires dart:io)
-  flutter_markdown_plus: ^1.0.3
+  flutter_markdown_plus: ^1.0.7  # Replaces flutter_markdown (discontinued)
 
   # Utilities
   path: ^1.9.1                # Path manipulation
   path_provider: ^2.1.5      # To find common directories (optional, but helpful)
-  rxdart: ^0.28.0 
-  shared_preferences: ^2.5.3 # For storing user preferences and settings
+  rxdart: ^0.28.0
+  shared_preferences: ^2.5.4 # For storing user preferences and settings
 
 
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
-  file_selector: ^1.0.3
+  file_selector: ^1.1.0
   dropdown_button2: ^2.3.9
   google_fonts: ^8.0.0
 
@@ -67,7 +66,12 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
+
+  # Testing dependencies
+  mockito: ^5.4.4
+  bloc_test: ^10.0.0
+  build_runner: ^2.4.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

@@ -1,7 +1,7 @@
 // lib/theme/app_themes.dart
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:notesapp/misc/no_animation_transition.dart';
+import 'package:asterisk_editor/misc/no_animation_transition.dart';
 
 class AppThemes {
   /// One seed to rule them all (Material 3).

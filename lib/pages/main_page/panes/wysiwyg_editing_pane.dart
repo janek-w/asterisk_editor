@@ -5,8 +5,8 @@ library;
 
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:notesapp/services/markdown_parser.dart';
-import 'package:notesapp/services/text_span_renderer.dart';
+import 'package:asterisk_editor/services/markdown_parser.dart';
+import 'package:asterisk_editor/services/text_span_renderer.dart';
 import '../../../config/app_config.dart';
 
 /// Custom TextEditingController that builds styled TextSpans from markdown.

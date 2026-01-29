@@ -1,7 +1,7 @@
 // lib/settings/user_settings_cubit.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:notesapp/misc/user_settings.dart';
+import 'package:asterisk_editor/misc/user_settings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class UserSettingsCubit extends Cubit<UserSettings> {

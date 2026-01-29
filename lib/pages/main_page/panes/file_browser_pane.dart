@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:notesapp/bloc/editor/editor_bloc.dart';
-import 'package:notesapp/bloc/file_browser/file_browser_bloc.dart';
-import 'package:notesapp/widgets/file_list_item.dart';
+import 'package:asterisk_editor/bloc/editor/editor_bloc.dart';
+import 'package:asterisk_editor/bloc/file_browser/file_browser_bloc.dart';
+import 'package:asterisk_editor/widgets/file_list_item.dart';
 import 'package:path/path.dart' as p;
 
 class FileBrowserPaneWidget extends StatelessWidget {

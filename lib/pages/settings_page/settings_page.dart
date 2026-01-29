@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:notesapp/bloc/user_settings/user_settings_cubit.dart';
+import 'package:asterisk_editor/bloc/user_settings/user_settings_cubit.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
