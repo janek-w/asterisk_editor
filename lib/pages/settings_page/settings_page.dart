@@ -13,11 +13,11 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
 
-  List<String> _coloreThemeOptions = ['Light Theme', 'Dark Theme', 'System Theme'];
+  final List<String> _coloreThemeOptions = ['Light Theme', 'Dark Theme', 'System Theme'];
   String _colorTheme = 'Light Theme';
   String _fontSize = 'Medium';
-  String _fontFamily = 'Arial';
-  String _lineHeight = '1.5';
+  final String _fontFamily = 'Arial';
+  final String _lineHeight = '1.5';
 
   @override
   void initState() {

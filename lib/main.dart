@@ -6,7 +6,6 @@ import 'dart:io';
 import 'package:notesapp/bloc/file_browser/file_browser_bloc.dart';
 import 'package:notesapp/bloc/user_settings/user_settings_cubit.dart';
 import 'package:notesapp/misc/app_themes.dart';
-import 'package:notesapp/misc/no_animation_transition.dart';
 import 'package:notesapp/misc/user_settings.dart';
 import 'package:notesapp/pages/main_page/main_page.dart';
 import 'package:shared_preferences/shared_preferences.dart'; // Import dart:io
