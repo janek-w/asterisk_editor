@@ -16,6 +16,7 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
     on<ContentChanged>(_onContentChanged);
     on<SaveFileRequested>(_onSaveFileRequested);
     on<ToggleEditorMode>(_onToggleEditorMode);
+    on<ToggleSyntaxVisibility>(_onToggleSyntaxVisibility);
   }
 
   Future<void> _onLoadFileRequested(
@@ -117,6 +118,16 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
     if (state is EditorLoaded) {
       final currentState = state as EditorLoaded;
       emit(currentState.copyWith(editorMode: event.mode));
+    }
+  }
+
+  void _onToggleSyntaxVisibility(
+    ToggleSyntaxVisibility event,
+    Emitter<EditorState> emit,
+  ) {
+    if (state is EditorLoaded) {
+      final currentState = state as EditorLoaded;
+      emit(currentState.copyWith(showRawMarkdown: event.showRaw));
     }
   }
 }

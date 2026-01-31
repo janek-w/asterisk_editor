@@ -123,6 +123,15 @@ class AppConfig {
   // Markdown Constants
   // ============================================
 
+  /// Enable hidden syntax rendering (Notion/Typora style)
+  ///
+  /// When true, markdown syntax characters are hidden visually
+  /// and only formatted content is displayed. When false, syntax
+  /// is shown but styled subtly.
+  ///
+  /// Set to false initially for gradual rollout
+  static const bool enableHiddenSyntax = false;
+
   /// Maximum header level (H1-H6)
   static const int maxHeaderLevel = 6;
 

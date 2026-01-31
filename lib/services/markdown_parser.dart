@@ -3,6 +3,9 @@
 /// Supports basic markdown syntax: headers, bold, italic, code, links,
 /// strikethrough, and lists (both ordered and unordered).
 ///
+/// Also supports GitHub Flavored Markdown (GFM): task lists, fenced code blocks,
+/// blockquotes, autolinks, and tables.
+///
 /// Example:
 /// ```dart
 /// final parser = MarkdownParser();
@@ -10,22 +13,49 @@
 /// ```
 library;
 
+/// Visibility mode for markdown syntax characters.
+enum SyntaxVisibility {
+  /// Syntax is fully visible
+  visible,
+
+  /// Syntax is hidden (Notion/Typora style)
+  hidden,
+
+  /// Syntax is replaced with a placeholder
+  placeholder,
+}
+
 /// Represents a markdown token with its type, position, and content.
 class MarkdownToken {
   /// The type of markdown element (e.g., 'header', 'bold', 'italic', 'code', 'link', 'list')
   final String type;
-  
+
   /// Start position of the token in the text
   final int start;
-  
+
   /// End position of the token in the text
   final int end;
-  
+
   /// The actual content of the token (without markdown syntax)
   final String content;
-  
+
   /// Additional metadata (e.g., header level, link URL)
   final Map<String, dynamic> metadata;
+
+  /// Start position of the syntax prefix (e.g., '**' in '**bold**')
+  final int? syntaxPrefixStart;
+
+  /// End position of the syntax prefix (exclusive)
+  final int? syntaxPrefixEnd;
+
+  /// Start position of the syntax suffix (e.g., '**' in '**bold**')
+  final int? syntaxSuffixStart;
+
+  /// End position of the syntax suffix (exclusive)
+  final int? syntaxSuffixEnd;
+
+  /// Visibility mode for this token's syntax
+  final SyntaxVisibility visibility;
 
   const MarkdownToken({
     required this.type,
@@ -33,11 +63,52 @@ class MarkdownToken {
     required this.end,
     required this.content,
     this.metadata = const {},
+    this.syntaxPrefixStart,
+    this.syntaxPrefixEnd,
+    this.syntaxSuffixStart,
+    this.syntaxSuffixEnd,
+    this.visibility = SyntaxVisibility.visible,
   });
+
+  /// Get the length of the syntax prefix
+  int get syntaxPrefixLength => (syntaxPrefixEnd ?? start) - (syntaxPrefixStart ?? start);
+
+  /// Get the length of the syntax suffix
+  int get syntaxSuffixLength => (syntaxSuffixEnd ?? end) - (syntaxSuffixStart ?? end);
+
+  /// Check if this token has visible syntax
+  bool get hasVisibleSyntax => visibility != SyntaxVisibility.hidden;
+
+  /// Create a copy of this token with modified fields
+  MarkdownToken copyWith({
+    String? type,
+    int? start,
+    int? end,
+    String? content,
+    Map<String, dynamic>? metadata,
+    int? syntaxPrefixStart,
+    int? syntaxPrefixEnd,
+    int? syntaxSuffixStart,
+    int? syntaxSuffixEnd,
+    SyntaxVisibility? visibility,
+  }) {
+    return MarkdownToken(
+      type: type ?? this.type,
+      start: start ?? this.start,
+      end: end ?? this.end,
+      content: content ?? this.content,
+      metadata: metadata ?? this.metadata,
+      syntaxPrefixStart: syntaxPrefixStart ?? this.syntaxPrefixStart,
+      syntaxPrefixEnd: syntaxPrefixEnd ?? this.syntaxPrefixEnd,
+      syntaxSuffixStart: syntaxSuffixStart ?? this.syntaxSuffixStart,
+      syntaxSuffixEnd: syntaxSuffixEnd ?? this.syntaxSuffixEnd,
+      visibility: visibility ?? this.visibility,
+    );
+  }
 
   @override
   String toString() {
-    return 'MarkdownToken(type: $type, start: $start, end: $end, content: $content)';
+    return 'MarkdownToken(type: $type, start: $start, end: $end, content: $content, visibility: $visibility)';
   }
 
   @override
@@ -47,11 +118,12 @@ class MarkdownToken {
         other.type == type &&
         other.start == start &&
         other.end == end &&
-        other.content == content;
+        other.content == content &&
+        other.visibility == visibility;
   }
 
   @override
-  int get hashCode => type.hashCode ^ start.hashCode ^ end.hashCode ^ content.hashCode;
+  int get hashCode => type.hashCode ^ start.hashCode ^ end.hashCode ^ content.hashCode ^ visibility.hashCode;
 }
 
 /// Parser for markdown syntax.
@@ -69,6 +141,13 @@ class MarkdownParser {
     'strikethrough': RegExp(r'~~(.+?)~~'),
     'list_unordered': RegExp(r'^[\-\*]\s+(.+)$', multiLine: true),
     'list_ordered': RegExp(r'^\d+\.\s+(.+)$', multiLine: true),
+    // GFM patterns
+    'task_list': RegExp(r'^[\-\*]\s+\[([ x])\]\s+(.+)$', multiLine: true, caseSensitive: false),
+    'fenced_code': RegExp(r'^```(\w*)\n([\s\S]+?)\n```$', multiLine: true),
+    'blockquote': RegExp(r'^>\s+(.+)$', multiLine: true),
+    'autolink': RegExp(r'(https?://[^\s]+)'),
+    // Table pattern (simplified - full table parsing is complex)
+    'table': RegExp(r'^\|?([^|\n]+)\|.+$', multiLine: true),
   };
 
   /// Parse the entire text and return a list of all markdown tokens.
@@ -85,13 +164,20 @@ class MarkdownParser {
 
     // Parse inline styles first (they don't span multiple lines)
     tokens.addAll(_findInlineStyles(text));
-    
+
     // Parse links
     tokens.addAll(_findLinks(text));
-    
+
     // Parse block elements (headers, lists)
     tokens.addAll(_findHeaders(text));
     tokens.addAll(_findLists(text));
+
+    // Parse GFM elements
+    tokens.addAll(_findTaskLists(text));
+    tokens.addAll(_findFencedCode(text));
+    tokens.addAll(_findBlockquotes(text));
+    tokens.addAll(_findAutolinks(text));
+    tokens.addAll(_findTables(text));
 
     // Merge overlapping tokens and sort by position
     return _mergeAndSortTokens(tokens);
@@ -172,6 +258,61 @@ class MarkdownParser {
   /// Returns a list of strikethrough [MarkdownToken] objects.
   List<MarkdownToken> findStrikethrough(String text) {
     return _findByPattern(text, 'strikethrough', _patterns['strikethrough']!);
+  }
+
+  /// Find all task list tokens in the text.
+  ///
+  /// Task lists are identified by `- [ ]` or `- [x]` syntax.
+  ///
+  /// [text] The text to search for task lists.
+  ///
+  /// Returns a list of task list [MarkdownToken] objects.
+  List<MarkdownToken> findTaskLists(String text) {
+    return _findTaskLists(text);
+  }
+
+  /// Find all fenced code block tokens in the text.
+  ///
+  /// Fenced code blocks are identified by triple backticks.
+  ///
+  /// [text] The text to search for fenced code blocks.
+  ///
+  /// Returns a list of fenced code [MarkdownToken] objects.
+  List<MarkdownToken> findFencedCode(String text) {
+    return _findFencedCode(text);
+  }
+
+  /// Find all blockquote tokens in the text.
+  ///
+  /// Blockquotes are identified by lines starting with `>`.
+  ///
+  /// [text] The text to search for blockquotes.
+  ///
+  /// Returns a list of blockquote [MarkdownToken] objects.
+  List<MarkdownToken> findBlockquotes(String text) {
+    return _findBlockquotes(text);
+  }
+
+  /// Find all autolink tokens in the text.
+  ///
+  /// Autolinks are automatically detected URLs.
+  ///
+  /// [text] The text to search for autolinks.
+  ///
+  /// Returns a list of autolink [MarkdownToken] objects.
+  List<MarkdownToken> findAutolinks(String text) {
+    return _findAutolinks(text);
+  }
+
+  /// Find all table tokens in the text.
+  ///
+  /// Tables are identified by pipe-separated rows.
+  ///
+  /// [text] The text to search for tables.
+  ///
+  /// Returns a list of table [MarkdownToken] objects.
+  List<MarkdownToken> findTables(String text) {
+    return _findTables(text);
   }
 
   // Private methods
@@ -260,7 +401,7 @@ class MarkdownParser {
   /// Returns a list of [MarkdownToken] objects matching the pattern.
   List<MarkdownToken> _findByPattern(String text, String type, RegExp pattern) {
     final tokens = <MarkdownToken>[];
-    
+
     for (final match in pattern.allMatches(text)) {
       tokens.add(MarkdownToken(
         type: type,
@@ -269,7 +410,169 @@ class MarkdownParser {
         content: match.group(1) ?? match.group(0)!,
       ));
     }
-    
+
+    return tokens;
+  }
+
+  /// Find all task list tokens in the text.
+  ///
+  /// Task lists are identified by `- [ ]` or `- [x]` syntax.
+  ///
+  /// [text] The text to search for task lists.
+  ///
+  /// Returns a list of task list [MarkdownToken] objects.
+  List<MarkdownToken> _findTaskLists(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['task_list']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final checkboxState = match.group(1)!;
+      final content = match.group(2)!;
+      final isChecked = checkboxState.toLowerCase() == 'x';
+
+      // Calculate syntax positions
+      final checkboxStart = match.start + match.group(0)!.indexOf('[');
+      final checkboxEnd = checkboxStart + 3; // Length of '[x]' or '[ ]'
+
+      tokens.add(MarkdownToken(
+        type: 'task_list',
+        start: match.start,
+        end: match.end,
+        content: content,
+        metadata: {
+          'isChecked': isChecked,
+          'checkboxPosition': checkboxStart,
+        },
+        syntaxPrefixStart: match.start,
+        syntaxPrefixEnd: checkboxEnd,
+        visibility: SyntaxVisibility.hidden,
+      ));
+    }
+
+    return tokens;
+  }
+
+  /// Find all fenced code block tokens in the text.
+  ///
+  /// Fenced code blocks are identified by triple backticks with optional language.
+  ///
+  /// [text] The text to search for fenced code blocks.
+  ///
+  /// Returns a list of fenced code [MarkdownToken] objects.
+  List<MarkdownToken> _findFencedCode(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['fenced_code']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final language = match.group(1)!;
+      final code = match.group(2)!;
+
+      // Calculate syntax positions
+      final firstNewline = match.group(0)!.indexOf('\n');
+      final lastNewline = match.group(0)!.lastIndexOf('\n');
+
+      tokens.add(MarkdownToken(
+        type: 'fenced_code',
+        start: match.start,
+        end: match.end,
+        content: code,
+        metadata: {
+          'language': language,
+        },
+        syntaxPrefixStart: match.start,
+        syntaxPrefixEnd: match.start + firstNewline,
+        syntaxSuffixStart: match.start + lastNewline,
+        syntaxSuffixEnd: match.end,
+        visibility: SyntaxVisibility.hidden,
+      ));
+    }
+
+    return tokens;
+  }
+
+  /// Find all blockquote tokens in the text.
+  ///
+  /// Blockquotes are identified by lines starting with `>`.
+  ///
+  /// [text] The text to search for blockquotes.
+  ///
+  /// Returns a list of blockquote [MarkdownToken] objects.
+  List<MarkdownToken> _findBlockquotes(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['blockquote']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final content = match.group(1)!;
+
+      tokens.add(MarkdownToken(
+        type: 'blockquote',
+        start: match.start,
+        end: match.end,
+        content: content,
+        syntaxPrefixStart: match.start,
+        syntaxPrefixEnd: match.start + 2, // Length of '> '
+        visibility: SyntaxVisibility.hidden,
+      ));
+    }
+
+    return tokens;
+  }
+
+  /// Find all autolink tokens in the text.
+  ///
+  /// Autolinks are automatically detected URLs.
+  ///
+  /// [text] The text to search for autolinks.
+  ///
+  /// Returns a list of autolink [MarkdownToken] objects.
+  List<MarkdownToken> _findAutolinks(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['autolink']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final url = match.group(0)!;
+
+      tokens.add(MarkdownToken(
+        type: 'autolink',
+        start: match.start,
+        end: match.end,
+        content: url,
+        metadata: {
+          'url': url,
+        },
+      ));
+    }
+
+    return tokens;
+  }
+
+  /// Find all table tokens in the text.
+  ///
+  /// Tables are identified by pipe-separated rows.
+  /// This is a simplified implementation - full table parsing requires
+  /// analyzing multiple rows and alignment.
+  ///
+  /// [text] The text to search for tables.
+  ///
+  /// Returns a list of table [MarkdownToken] objects.
+  List<MarkdownToken> _findTables(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['table']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final rowContent = match.group(1)!;
+
+      tokens.add(MarkdownToken(
+        type: 'table',
+        start: match.start,
+        end: match.end,
+        content: rowContent,
+        metadata: {
+          'isHeader': false, // Will be determined by table parser
+        },
+      ));
+    }
+
     return tokens;
   }
 

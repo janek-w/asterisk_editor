@@ -43,3 +43,12 @@ class ToggleEditorMode extends EditorEvent {
   @override
   List<Object> get props => [mode];
 }
+
+class ToggleSyntaxVisibility extends EditorEvent {
+  final bool showRaw;
+
+  const ToggleSyntaxVisibility(this.showRaw);
+
+  @override
+  List<Object> get props => [showRaw];
+}

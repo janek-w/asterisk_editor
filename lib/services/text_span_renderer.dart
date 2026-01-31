@@ -94,6 +94,53 @@ class TextSpanRenderer {
     return TextSpan(style: baseTextStyle, children: spans);
   }
 
+  /// Build a TextSpan with hidden markdown syntax (Notion/Typora style).
+  /// Markdown syntax characters are completely hidden, only formatted content is shown.
+  ///
+  /// This method uses the token's syntax position information to exclude
+  /// syntax characters from the rendered text span.
+  TextSpan buildTextSpanWithHiddenSyntax(String text, List<MarkdownToken> tokens, TextStyle baseTextStyle) {
+    if (tokens.isEmpty) {
+      return TextSpan(text: text, style: baseTextStyle);
+    }
+
+    final spans = <TextSpan>[];
+    int lastEnd = 0;
+
+    for (final token in tokens) {
+      // Add unstyled text before this token (excluding any prefix syntax)
+      final visibleStart = token.syntaxPrefixEnd ?? token.start;
+      if (visibleStart > lastEnd) {
+        spans.add(TextSpan(
+          text: text.substring(lastEnd, visibleStart),
+          style: baseTextStyle,
+        ));
+      }
+
+      // Add the styled token content only (no syntax)
+      final contentSpan = _createSpanForToken(token);
+      spans.add(TextSpan(
+        text: contentSpan.text,
+        style: baseTextStyle.merge(contentSpan.style),
+        children: contentSpan.children,
+        recognizer: contentSpan.recognizer,
+      ));
+
+      // Move past the token (including any suffix syntax)
+      lastEnd = token.syntaxSuffixStart ?? token.end;
+    }
+
+    // Add remaining unstyled text after the last token
+    if (lastEnd < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(lastEnd),
+        style: baseTextStyle,
+      ));
+    }
+
+    return TextSpan(style: baseTextStyle, children: spans);
+  }
+
   /// Create the style for markdown syntax characters.
   ///
   /// Syntax characters are styled subtly with gray color and slightly smaller font
@@ -198,6 +245,16 @@ class TextSpanRenderer {
         return _createListSpan(token);
       case 'strikethrough':
         return _createStrikethroughSpan(token);
+      case 'task_list':
+        return _createTaskListSpan(token);
+      case 'fenced_code':
+        return _createFencedCodeSpan(token);
+      case 'blockquote':
+        return _createBlockquoteSpan(token);
+      case 'autolink':
+        return _createAutolinkSpan(token);
+      case 'table':
+        return _createTableSpan(token);
       default:
         return TextSpan(text: token.content, style: baseStyle);
     }
@@ -359,6 +416,78 @@ class TextSpanRenderer {
     final baseSize = baseStyle.fontSize ?? AppConfig.defaultFontSize;
     final multiplier = AppConfig.getHeaderMultiplier(level);
     return baseSize * multiplier;
+  }
+
+  /// Create a styled TextSpan for a task list item.
+  ///
+  /// Task list items are rendered with a checkbox indicator and strikethrough
+  /// style when checked.
+  TextSpan _createTaskListSpan(MarkdownToken token) {
+    final isChecked = token.metadata['isChecked'] as bool? ?? false;
+
+    return TextSpan(
+      text: token.content,
+      style: isChecked
+          ? baseStyle.copyWith(
+              decoration: TextDecoration.lineThrough,
+              color: baseStyle.color?.withOpacity(0.6),
+            )
+          : baseStyle,
+    );
+  }
+
+  /// Create a styled TextSpan for a fenced code block.
+  ///
+  /// Fenced code blocks use monospace font with a background color.
+  TextSpan _createFencedCodeSpan(MarkdownToken token) {
+    final language = token.metadata['language'] as String?;
+
+    return TextSpan(
+      text: token.content,
+      style: baseStyle.copyWith(
+        fontFamily: 'monospace',
+        backgroundColor: codeBackgroundColor ?? AppConfig.getCodeBackgroundColor(false),
+        fontSize: baseStyle.fontSize! * 0.9,
+        height: 1.4,
+      ),
+    );
+  }
+
+  /// Create a styled TextSpan for a blockquote.
+  ///
+  /// Blockquotes use italic style and a subtle left border effect
+  /// (represented by color change in text).
+  TextSpan _createBlockquoteSpan(MarkdownToken token) {
+    return TextSpan(
+      text: token.content,
+      style: baseStyle.copyWith(
+        fontStyle: FontStyle.italic,
+        color: baseStyle.color?.withOpacity(0.8),
+      ),
+    );
+  }
+
+  /// Create a styled TextSpan for an autolink.
+  ///
+  /// Autolinks are styled like regular links with automatic URL detection.
+  TextSpan _createAutolinkSpan(MarkdownToken token) {
+    final url = token.metadata['url'] as String? ?? token.content;
+
+    return TextSpan(
+      text: token.content,
+      style: getLinkStyle(),
+      // Note: Actual link navigation would require a gesture recognizer
+    );
+  }
+
+  /// Create a styled TextSpan for a table row.
+  ///
+  /// Tables are rendered with tabular spacing (simplified implementation).
+  TextSpan _createTableSpan(MarkdownToken token) {
+    return TextSpan(
+      text: token.content,
+      style: baseStyle,
+    );
   }
 }
 
