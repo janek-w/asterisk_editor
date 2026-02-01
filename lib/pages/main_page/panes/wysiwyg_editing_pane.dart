@@ -88,9 +88,17 @@ class MarkdownTextEditingController extends TextEditingController {
     // Build the appropriate TextSpan based on mode
     final baseTextStyle = style ?? const TextStyle();
     if (showRawMarkdown || !AppConfig.enableHiddenSyntax) {
-      return renderer.buildTextSpanWithVisibleSyntax(text, tokens, baseTextStyle);
+      return renderer.buildTextSpanWithVisibleSyntax(
+        text,
+        tokens,
+        baseTextStyle,
+      );
     } else {
-      return renderer.buildTextSpanWithHiddenSyntax(text, tokens, baseTextStyle);
+      return renderer.buildTextSpanWithHiddenSyntax(
+        text,
+        tokens,
+        baseTextStyle,
+      );
     }
   }
 
@@ -222,13 +230,21 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
     // Create custom controller with markdown rendering
     _markdownController = MarkdownTextEditingController(
       parser: _parser,
-      renderer: const TextSpanRenderer(), // Will be updated in didChangeDependencies
+      renderer:
+          const TextSpanRenderer(), // Will be updated in didChangeDependencies
       positionMapper: _positionMapper,
       cursorManager: _cursorManager,
       selectionMapper: _selectionMapper,
       text: widget.controller.text,
       showRawMarkdown: widget.showRawMarkdown,
       onChanged: (text) {
+        // Sync changes back to the original controller to ensure
+        // edits are preserved when switching between editor modes
+        if (!_isUpdatingFromOriginal && widget.controller.text != text) {
+          _isUpdatingFromOriginal = true;
+          widget.controller.text = text;
+          _isUpdatingFromOriginal = false;
+        }
         // Notify parent
         widget.onChanged?.call(text);
       },
@@ -305,7 +321,9 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
     }
 
     // Get the text position from the tap
-    final textPosition = _getTextPositionFromGlobalPosition(details.globalPosition);
+    final textPosition = _getTextPositionFromGlobalPosition(
+      details.globalPosition,
+    );
     if (textPosition != null) {
       setState(() {
         _lastTapPosition = textPosition;
@@ -325,7 +343,8 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
 
   /// Get the text position from a global position.
   TextPosition? _getTextPositionFromGlobalPosition(Offset globalPosition) {
-    final RenderBox? textFieldBox = _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
+    final RenderBox? textFieldBox =
+        _textFieldKey.currentContext?.findRenderObject() as RenderBox?;
     if (textFieldBox == null) return null;
 
     // Convert global position to local position
@@ -351,10 +370,16 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
 
   @override
   Widget build(BuildContext context) {
-    final useHiddenSyntax = AppConfig.enableHiddenSyntax && !widget.showRawMarkdown;
+    final useHiddenSyntax =
+        AppConfig.enableHiddenSyntax && !widget.showRawMarkdown;
 
     return Padding(
-      padding: const EdgeInsets.only(top: 4.0, left: 4.0, right: 4.0, bottom: 4.0),
+      padding: const EdgeInsets.only(
+        top: 4.0,
+        left: 4.0,
+        right: 4.0,
+        bottom: 4.0,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -399,10 +424,7 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest,
         border: Border(
-          bottom: BorderSide(
-            color: Theme.of(context).dividerColor,
-            width: 1,
-          ),
+          bottom: BorderSide(color: Theme.of(context).dividerColor, width: 1),
         ),
       ),
       child: SingleChildScrollView(
@@ -480,10 +502,7 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
         splashRadius: 20,
         onPressed: onPressed,
         padding: const EdgeInsets.symmetric(horizontal: 4.0),
-        constraints: const BoxConstraints(
-          minWidth: 32,
-          minHeight: 32,
-        ),
+        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
       ),
     );
   }
@@ -507,7 +526,8 @@ class _WysiwygEditorWidgetState extends State<WysiwygEditorWidget> {
     );
 
     // Calculate new cursor position
-    final newCursorOffset = selection.start + prefix.length + selectedText.length;
+    final newCursorOffset =
+        selection.start + prefix.length + selectedText.length;
 
     // Update the controller with new text and cursor position
     controller.value = TextEditingValue(

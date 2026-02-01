@@ -71,10 +71,12 @@ class MarkdownToken {
   });
 
   /// Get the length of the syntax prefix
-  int get syntaxPrefixLength => (syntaxPrefixEnd ?? start) - (syntaxPrefixStart ?? start);
+  int get syntaxPrefixLength =>
+      (syntaxPrefixEnd ?? start) - (syntaxPrefixStart ?? start);
 
   /// Get the length of the syntax suffix
-  int get syntaxSuffixLength => (syntaxSuffixEnd ?? end) - (syntaxSuffixStart ?? end);
+  int get syntaxSuffixLength =>
+      (syntaxSuffixEnd ?? end) - (syntaxSuffixStart ?? end);
 
   /// Check if this token has visible syntax
   bool get hasVisibleSyntax => visibility != SyntaxVisibility.hidden;
@@ -123,7 +125,12 @@ class MarkdownToken {
   }
 
   @override
-  int get hashCode => type.hashCode ^ start.hashCode ^ end.hashCode ^ content.hashCode ^ visibility.hashCode;
+  int get hashCode =>
+      type.hashCode ^
+      start.hashCode ^
+      end.hashCode ^
+      content.hashCode ^
+      visibility.hashCode;
 }
 
 /// Parser for markdown syntax.
@@ -133,21 +140,55 @@ class MarkdownToken {
 class MarkdownParser {
   /// Regex patterns for different markdown elements
   static final Map<String, RegExp> _patterns = {
+    // Basic Markdown
     'header': RegExp(r'^(#{1,6})\s+(.+)$', multiLine: true),
     'bold': RegExp(r'\*\*(.+?)\*\*'),
+    'bold_underscore': RegExp(r'(?<![a-zA-Z0-9])__(.+?)__(?![a-zA-Z0-9])'),
     'italic': RegExp(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)'),
+    'italic_underscore': RegExp(
+      r'(?<![a-zA-Z0-9])_(?!_)(.+?)(?<!_)_(?![a-zA-Z0-9_])',
+    ),
     'code': RegExp(r'`([^`]+)`'),
     'link': RegExp(r'\[(.+?)\]\((.+?)\)'),
     'strikethrough': RegExp(r'~~(.+?)~~'),
     'list_unordered': RegExp(r'^[\-\*]\s+(.+)$', multiLine: true),
     'list_ordered': RegExp(r'^\d+\.\s+(.+)$', multiLine: true),
+
     // GFM patterns
-    'task_list': RegExp(r'^[\-\*]\s+\[([ x])\]\s+(.+)$', multiLine: true, caseSensitive: false),
+    'task_list': RegExp(
+      r'^[\-\*]\s+\[([ x])\]\s+(.+)$',
+      multiLine: true,
+      caseSensitive: false,
+    ),
     'fenced_code': RegExp(r'^```(\w*)\n([\s\S]+?)\n```$', multiLine: true),
     'blockquote': RegExp(r'^>\s+(.+)$', multiLine: true),
     'autolink': RegExp(r'(https?://[^\s]+)'),
-    // Table pattern (simplified - full table parsing is complex)
     'table': RegExp(r'^\|?([^|\n]+)\|.+$', multiLine: true),
+
+    // Typora extended patterns - Block elements
+    'horizontal_rule': RegExp(r'^(\*{3,}|-{3,}|_{3,})\s*$', multiLine: true),
+    'math_block': RegExp(r'^\$\$\n?([\s\S]+?)\n?\$\$', multiLine: true),
+    'footnote_ref': RegExp(r'\[\^([^\]]+)\](?!\:)'),
+    'footnote_def': RegExp(r'^\[\^([^\]]+)\]:\s*(.+)$', multiLine: true),
+    'yaml_front_matter': RegExp(r'^---\n([\s\S]+?)\n---', multiLine: true),
+    'toc': RegExp(r'^\[toc\]\s*$', multiLine: true, caseSensitive: false),
+    'github_alert': RegExp(
+      r'^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*\n((?:>\s*.+\n?)+)',
+      multiLine: true,
+    ),
+
+    // Typora extended patterns - Span elements
+    'image': RegExp(r'!\[([^\]]*)\]\(([^\s\)]+)(?:\s+"([^"]*)")?\)'),
+    'reference_link': RegExp(r'\[([^\]]+)\]\[([^\]]*)\]'),
+    'reference_def': RegExp(
+      r'^\[([^\]]+)\]:\s*(\S+)(?:\s+"([^"]*)")?\s*$',
+      multiLine: true,
+    ),
+    'emoji': RegExp(r':([a-zA-Z0-9_+-]+):'),
+    'inline_math': RegExp(r'(?<!\$)\$(?!\$)([^\$\n]+)\$(?!\$)'),
+    'subscript': RegExp(r'~([^~\s]+)~'),
+    'superscript': RegExp(r'\^([^\^\s]+)\^'),
+    'highlight': RegExp(r'==(.+?)=='),
   };
 
   /// Parse the entire text and return a list of all markdown tokens.
@@ -165,8 +206,9 @@ class MarkdownParser {
     // Parse inline styles first (they don't span multiple lines)
     tokens.addAll(_findInlineStyles(text));
 
-    // Parse links
+    // Parse links and images
     tokens.addAll(_findLinks(text));
+    tokens.addAll(_findImages(text));
 
     // Parse block elements (headers, lists)
     tokens.addAll(_findHeaders(text));
@@ -178,6 +220,19 @@ class MarkdownParser {
     tokens.addAll(_findBlockquotes(text));
     tokens.addAll(_findAutolinks(text));
     tokens.addAll(_findTables(text));
+
+    // Parse Typora extended block elements
+    tokens.addAll(_findHorizontalRules(text));
+    tokens.addAll(_findMathBlocks(text));
+    tokens.addAll(_findFootnotes(text));
+    tokens.addAll(_findYamlFrontMatter(text));
+    tokens.addAll(_findToc(text));
+    tokens.addAll(_findGithubAlerts(text));
+
+    // Parse Typora extended span elements
+    tokens.addAll(_findReferenceLinks(text));
+    tokens.addAll(_findEmoji(text));
+    tokens.addAll(_findInlineMath(text));
 
     // Merge overlapping tokens and sort by position
     return _mergeAndSortTokens(tokens);
@@ -321,37 +376,52 @@ class MarkdownParser {
   List<MarkdownToken> _findHeaders(String text) {
     final tokens = <MarkdownToken>[];
     final pattern = _patterns['header']!;
-    
+
     for (final match in pattern.allMatches(text)) {
       final hashCount = match.group(1)!.length;
       final content = match.group(2)!;
-      
-      tokens.add(MarkdownToken(
-        type: 'header',
-        start: match.start,
-        end: match.end,
-        content: content,
-        metadata: {'level': hashCount},
-      ));
+
+      tokens.add(
+        MarkdownToken(
+          type: 'header',
+          start: match.start,
+          end: match.end,
+          content: content,
+          metadata: {'level': hashCount},
+        ),
+      );
     }
-    
+
     return tokens;
   }
 
-  /// Find all inline style tokens (bold, italic, code, strikethrough).
+  /// Find all inline style tokens (bold, italic, code, strikethrough, etc).
   ///
   /// Processes inline styles in order of specificity to handle nested
   /// styles correctly. Code is most specific, followed by bold, then italic.
   List<MarkdownToken> _findInlineStyles(String text) {
     final tokens = <MarkdownToken>[];
-    
+
     // Find in order of specificity to handle nested styles correctly
     // Code first (most specific), then bold, then italic
     tokens.addAll(_findByPattern(text, 'code', _patterns['code']!));
     tokens.addAll(_findByPattern(text, 'bold', _patterns['bold']!));
+    tokens.addAll(_findByPattern(text, 'bold', _patterns['bold_underscore']!));
     tokens.addAll(_findByPattern(text, 'italic', _patterns['italic']!));
-    tokens.addAll(_findByPattern(text, 'strikethrough', _patterns['strikethrough']!));
-    
+    tokens.addAll(
+      _findByPattern(text, 'italic', _patterns['italic_underscore']!),
+    );
+    tokens.addAll(
+      _findByPattern(text, 'strikethrough', _patterns['strikethrough']!),
+    );
+
+    // Typora extended inline styles
+    tokens.addAll(_findByPattern(text, 'highlight', _patterns['highlight']!));
+    tokens.addAll(_findByPattern(text, 'subscript', _patterns['subscript']!));
+    tokens.addAll(
+      _findByPattern(text, 'superscript', _patterns['superscript']!),
+    );
+
     return tokens;
   }
 
@@ -359,33 +429,39 @@ class MarkdownParser {
   List<MarkdownToken> _findLinks(String text) {
     final tokens = <MarkdownToken>[];
     final pattern = _patterns['link']!;
-    
+
     for (final match in pattern.allMatches(text)) {
       final linkText = match.group(1)!;
       final url = match.group(2)!;
-      
-      tokens.add(MarkdownToken(
-        type: 'link',
-        start: match.start,
-        end: match.end,
-        content: linkText,
-        metadata: {'url': url},
-      ));
+
+      tokens.add(
+        MarkdownToken(
+          type: 'link',
+          start: match.start,
+          end: match.end,
+          content: linkText,
+          metadata: {'url': url},
+        ),
+      );
     }
-    
+
     return tokens;
   }
 
   /// Find all list tokens (both ordered and unordered) (private method).
   List<MarkdownToken> _findLists(String text) {
     final tokens = <MarkdownToken>[];
-    
+
     // Find unordered lists
-    tokens.addAll(_findByPattern(text, 'list_unordered', _patterns['list_unordered']!));
-    
+    tokens.addAll(
+      _findByPattern(text, 'list_unordered', _patterns['list_unordered']!),
+    );
+
     // Find ordered lists
-    tokens.addAll(_findByPattern(text, 'list_ordered', _patterns['list_ordered']!));
-    
+    tokens.addAll(
+      _findByPattern(text, 'list_ordered', _patterns['list_ordered']!),
+    );
+
     return tokens;
   }
 
@@ -403,12 +479,14 @@ class MarkdownParser {
     final tokens = <MarkdownToken>[];
 
     for (final match in pattern.allMatches(text)) {
-      tokens.add(MarkdownToken(
-        type: type,
-        start: match.start,
-        end: match.end,
-        content: match.group(1) ?? match.group(0)!,
-      ));
+      tokens.add(
+        MarkdownToken(
+          type: type,
+          start: match.start,
+          end: match.end,
+          content: match.group(1) ?? match.group(0)!,
+        ),
+      );
     }
 
     return tokens;
@@ -434,19 +512,18 @@ class MarkdownParser {
       final checkboxStart = match.start + match.group(0)!.indexOf('[');
       final checkboxEnd = checkboxStart + 3; // Length of '[x]' or '[ ]'
 
-      tokens.add(MarkdownToken(
-        type: 'task_list',
-        start: match.start,
-        end: match.end,
-        content: content,
-        metadata: {
-          'isChecked': isChecked,
-          'checkboxPosition': checkboxStart,
-        },
-        syntaxPrefixStart: match.start,
-        syntaxPrefixEnd: checkboxEnd,
-        visibility: SyntaxVisibility.hidden,
-      ));
+      tokens.add(
+        MarkdownToken(
+          type: 'task_list',
+          start: match.start,
+          end: match.end,
+          content: content,
+          metadata: {'isChecked': isChecked, 'checkboxPosition': checkboxStart},
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: checkboxEnd,
+          visibility: SyntaxVisibility.hidden,
+        ),
+      );
     }
 
     return tokens;
@@ -471,20 +548,20 @@ class MarkdownParser {
       final firstNewline = match.group(0)!.indexOf('\n');
       final lastNewline = match.group(0)!.lastIndexOf('\n');
 
-      tokens.add(MarkdownToken(
-        type: 'fenced_code',
-        start: match.start,
-        end: match.end,
-        content: code,
-        metadata: {
-          'language': language,
-        },
-        syntaxPrefixStart: match.start,
-        syntaxPrefixEnd: match.start + firstNewline,
-        syntaxSuffixStart: match.start + lastNewline,
-        syntaxSuffixEnd: match.end,
-        visibility: SyntaxVisibility.hidden,
-      ));
+      tokens.add(
+        MarkdownToken(
+          type: 'fenced_code',
+          start: match.start,
+          end: match.end,
+          content: code,
+          metadata: {'language': language},
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: match.start + firstNewline,
+          syntaxSuffixStart: match.start + lastNewline,
+          syntaxSuffixEnd: match.end,
+          visibility: SyntaxVisibility.hidden,
+        ),
+      );
     }
 
     return tokens;
@@ -504,15 +581,17 @@ class MarkdownParser {
     for (final match in pattern.allMatches(text)) {
       final content = match.group(1)!;
 
-      tokens.add(MarkdownToken(
-        type: 'blockquote',
-        start: match.start,
-        end: match.end,
-        content: content,
-        syntaxPrefixStart: match.start,
-        syntaxPrefixEnd: match.start + 2, // Length of '> '
-        visibility: SyntaxVisibility.hidden,
-      ));
+      tokens.add(
+        MarkdownToken(
+          type: 'blockquote',
+          start: match.start,
+          end: match.end,
+          content: content,
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: match.start + 2, // Length of '> '
+          visibility: SyntaxVisibility.hidden,
+        ),
+      );
     }
 
     return tokens;
@@ -532,15 +611,15 @@ class MarkdownParser {
     for (final match in pattern.allMatches(text)) {
       final url = match.group(0)!;
 
-      tokens.add(MarkdownToken(
-        type: 'autolink',
-        start: match.start,
-        end: match.end,
-        content: url,
-        metadata: {
-          'url': url,
-        },
-      ));
+      tokens.add(
+        MarkdownToken(
+          type: 'autolink',
+          start: match.start,
+          end: match.end,
+          content: url,
+          metadata: {'url': url},
+        ),
+      );
     }
 
     return tokens;
@@ -562,15 +641,329 @@ class MarkdownParser {
     for (final match in pattern.allMatches(text)) {
       final rowContent = match.group(1)!;
 
-      tokens.add(MarkdownToken(
-        type: 'table',
-        start: match.start,
-        end: match.end,
-        content: rowContent,
-        metadata: {
-          'isHeader': false, // Will be determined by table parser
-        },
-      ));
+      tokens.add(
+        MarkdownToken(
+          type: 'table',
+          start: match.start,
+          end: match.end,
+          content: rowContent,
+          metadata: {
+            'isHeader': false, // Will be determined by table parser
+          },
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  // ============================================================
+  // Typora Extended Markdown - Block Elements
+  // ============================================================
+
+  /// Find all image tokens in the text.
+  ///
+  /// Images are identified by ![alt](url "optional title") syntax.
+  List<MarkdownToken> _findImages(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['image']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final altText = match.group(1) ?? '';
+      final url = match.group(2)!;
+      final title = match.group(3);
+
+      tokens.add(
+        MarkdownToken(
+          type: 'image',
+          start: match.start,
+          end: match.end,
+          content: altText,
+          metadata: {'url': url, if (title != null) 'title': title},
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: match.start + 2, // Length of '!['
+          syntaxSuffixStart: match.end - 1,
+          syntaxSuffixEnd: match.end,
+          visibility: SyntaxVisibility.hidden,
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  /// Find all horizontal rule tokens in the text.
+  ///
+  /// Horizontal rules are identified by `---`, `***`, or `___` on their own line.
+  List<MarkdownToken> _findHorizontalRules(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['horizontal_rule']!;
+
+    for (final match in pattern.allMatches(text)) {
+      tokens.add(
+        MarkdownToken(
+          type: 'horizontal_rule',
+          start: match.start,
+          end: match.end,
+          content: '',
+          metadata: {
+            'char': match.group(1)![0], // First character (*, -, or _)
+          },
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  /// Find all math block tokens in the text.
+  ///
+  /// Math blocks are identified by $$ delimiters.
+  List<MarkdownToken> _findMathBlocks(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['math_block']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final mathContent = match.group(1)!;
+
+      tokens.add(
+        MarkdownToken(
+          type: 'math_block',
+          start: match.start,
+          end: match.end,
+          content: mathContent,
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: match.start + 2, // Length of '$$'
+          syntaxSuffixStart: match.end - 2,
+          syntaxSuffixEnd: match.end,
+          visibility: SyntaxVisibility.hidden,
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  /// Find all footnote tokens in the text.
+  ///
+  /// Footnotes include both references [^id] and definitions [^id]: content.
+  List<MarkdownToken> _findFootnotes(String text) {
+    final tokens = <MarkdownToken>[];
+
+    // Find footnote references
+    final refPattern = _patterns['footnote_ref']!;
+    for (final match in refPattern.allMatches(text)) {
+      final id = match.group(1)!;
+      tokens.add(
+        MarkdownToken(
+          type: 'footnote_ref',
+          start: match.start,
+          end: match.end,
+          content: id,
+          metadata: {'id': id},
+        ),
+      );
+    }
+
+    // Find footnote definitions
+    final defPattern = _patterns['footnote_def']!;
+    for (final match in defPattern.allMatches(text)) {
+      final id = match.group(1)!;
+      final content = match.group(2)!;
+      tokens.add(
+        MarkdownToken(
+          type: 'footnote_def',
+          start: match.start,
+          end: match.end,
+          content: content,
+          metadata: {'id': id},
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  /// Find YAML front matter in the text.
+  ///
+  /// YAML front matter is delimited by --- at the start of the document.
+  List<MarkdownToken> _findYamlFrontMatter(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['yaml_front_matter']!;
+
+    for (final match in pattern.allMatches(text)) {
+      // Only match at the very beginning of the document
+      if (match.start == 0) {
+        final yamlContent = match.group(1)!;
+        tokens.add(
+          MarkdownToken(
+            type: 'yaml_front_matter',
+            start: match.start,
+            end: match.end,
+            content: yamlContent,
+            syntaxPrefixStart: 0,
+            syntaxPrefixEnd: 4, // Length of '---\n'
+            syntaxSuffixStart: match.end - 4,
+            syntaxSuffixEnd: match.end,
+            visibility: SyntaxVisibility.hidden,
+          ),
+        );
+        break; // Only one front matter block allowed
+      }
+    }
+
+    return tokens;
+  }
+
+  /// Find table of contents markers in the text.
+  ///
+  /// TOC is identified by [toc] on its own line (case insensitive).
+  List<MarkdownToken> _findToc(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['toc']!;
+
+    for (final match in pattern.allMatches(text)) {
+      tokens.add(
+        MarkdownToken(
+          type: 'toc',
+          start: match.start,
+          end: match.end,
+          content: '[TOC]',
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  /// Find GitHub-style alerts/callouts in the text.
+  ///
+  /// Alerts are blockquotes starting with > [!NOTE], > [!TIP], etc.
+  List<MarkdownToken> _findGithubAlerts(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['github_alert']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final alertType = match.group(1)!;
+      final content = match.group(2)!;
+
+      tokens.add(
+        MarkdownToken(
+          type: 'github_alert',
+          start: match.start,
+          end: match.end,
+          content: content,
+          metadata: {'alertType': alertType},
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  // ============================================================
+  // Typora Extended Markdown - Span Elements
+  // ============================================================
+
+  /// Find all reference link tokens in the text.
+  ///
+  /// Reference links use [text][id] syntax with [id]: url definition.
+  List<MarkdownToken> _findReferenceLinks(String text) {
+    final tokens = <MarkdownToken>[];
+
+    // First, find all reference definitions and store them
+    final definitions = <String, Map<String, String>>{};
+    final defPattern = _patterns['reference_def']!;
+    for (final match in defPattern.allMatches(text)) {
+      final id = match.group(1)!.toLowerCase();
+      final url = match.group(2)!;
+      final title = match.group(3);
+      definitions[id] = {'url': url, if (title != null) 'title': title};
+    }
+
+    // Then find reference links
+    final linkPattern = _patterns['reference_link']!;
+    for (final match in linkPattern.allMatches(text)) {
+      final linkText = match.group(1)!;
+      var id = match.group(2)!;
+
+      // Empty id means use the link text as id
+      if (id.isEmpty) {
+        id = linkText;
+      }
+
+      final def = definitions[id.toLowerCase()];
+
+      tokens.add(
+        MarkdownToken(
+          type: 'reference_link',
+          start: match.start,
+          end: match.end,
+          content: linkText,
+          metadata: {
+            'id': id,
+            if (def != null) 'url': def['url'],
+            if (def != null && def['title'] != null) 'title': def['title'],
+          },
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  /// Find all emoji shortcode tokens in the text.
+  ///
+  /// Emoji shortcodes are identified by :emoji_name: syntax.
+  List<MarkdownToken> _findEmoji(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['emoji']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final emojiName = match.group(1)!;
+
+      tokens.add(
+        MarkdownToken(
+          type: 'emoji',
+          start: match.start,
+          end: match.end,
+          content: emojiName,
+          metadata: {'name': emojiName},
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: match.start + 1, // Length of ':'
+          syntaxSuffixStart: match.end - 1,
+          syntaxSuffixEnd: match.end,
+          visibility: SyntaxVisibility.hidden,
+        ),
+      );
+    }
+
+    return tokens;
+  }
+
+  /// Find all inline math tokens in the text.
+  ///
+  /// Inline math is identified by single $ delimiters.
+  List<MarkdownToken> _findInlineMath(String text) {
+    final tokens = <MarkdownToken>[];
+    final pattern = _patterns['inline_math']!;
+
+    for (final match in pattern.allMatches(text)) {
+      final mathContent = match.group(1)!;
+
+      tokens.add(
+        MarkdownToken(
+          type: 'inline_math',
+          start: match.start,
+          end: match.end,
+          content: mathContent,
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: match.start + 1, // Length of '$'
+          syntaxSuffixStart: match.end - 1,
+          syntaxSuffixEnd: match.end,
+          visibility: SyntaxVisibility.hidden,
+        ),
+      );
     }
 
     return tokens;
@@ -587,7 +980,7 @@ class MarkdownParser {
   /// Returns a sorted, non-overlapping list of [MarkdownToken] objects.
   List<MarkdownToken> _mergeAndSortTokens(List<MarkdownToken> tokens) {
     if (tokens.isEmpty) return tokens;
-    
+
     // Sort by start position, then by end position (descending)
     final sortedTokens = List<MarkdownToken>.from(tokens)
       ..sort((a, b) {
@@ -595,14 +988,14 @@ class MarkdownParser {
         if (startCompare != 0) return startCompare;
         return b.end.compareTo(a.end); // Longer tokens first
       });
-    
+
     // Remove duplicates and handle overlaps
     final mergedTokens = <MarkdownToken>[];
     final usedRanges = <_TextRange>[];
-    
+
     for (final token in sortedTokens) {
       final range = _TextRange(token.start, token.end);
-      
+
       // Check if this token overlaps with any already used range
       bool overlaps = false;
       for (final usedRange in usedRanges) {
@@ -611,16 +1004,16 @@ class MarkdownParser {
           break;
         }
       }
-      
+
       if (!overlaps) {
         mergedTokens.add(token);
         usedRanges.add(range);
       }
     }
-    
+
     // Sort by start position for final output
     mergedTokens.sort((a, b) => a.start.compareTo(b.start));
-    
+
     return mergedTokens;
   }
 }
@@ -632,7 +1025,7 @@ class MarkdownParser {
 class _TextRange {
   final int start;
   final int end;
-  
+
   _TextRange(this.start, this.end);
 
   /// Check if this range overlaps with another range.
@@ -641,7 +1034,7 @@ class _TextRange {
   bool overlapsWith(_TextRange other) {
     return start < other.end && end > other.start;
   }
-  
+
   @override
   String toString() => '[$start, $end]';
 }
