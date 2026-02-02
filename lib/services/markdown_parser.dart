@@ -156,7 +156,7 @@ class MarkdownParser {
 
     // GFM patterns
     'task_list': RegExp(
-      r'^[\-\*]\s+\[([ x])\]\s+(.+)$',
+      r'^([\-\*])\s+\[([ x])\]\s+(.+)$',
       multiLine: true,
       caseSensitive: false,
     ),
@@ -257,7 +257,13 @@ class MarkdownParser {
   ///
   /// Returns a list of bold [MarkdownToken] objects.
   List<MarkdownToken> findBold(String text) {
-    return _findByPattern(text, 'bold', _patterns['bold']!);
+    return _findByPattern(
+      text,
+      'bold',
+      _patterns['bold']!,
+      prefixLength: 2,
+      suffixLength: 2,
+    );
   }
 
   /// Find all italic tokens in the text.
@@ -268,7 +274,13 @@ class MarkdownParser {
   ///
   /// Returns a list of italic [MarkdownToken] objects.
   List<MarkdownToken> findItalic(String text) {
-    return _findByPattern(text, 'italic', _patterns['italic']!);
+    return _findByPattern(
+      text,
+      'italic',
+      _patterns['italic']!,
+      prefixLength: 1,
+      suffixLength: 1,
+    );
   }
 
   /// Find all inline code tokens in the text.
@@ -279,7 +291,13 @@ class MarkdownParser {
   ///
   /// Returns a list of code [MarkdownToken] objects.
   List<MarkdownToken> findCode(String text) {
-    return _findByPattern(text, 'code', _patterns['code']!);
+    return _findByPattern(
+      text,
+      'code',
+      _patterns['code']!,
+      prefixLength: 1,
+      suffixLength: 1,
+    );
   }
 
   /// Find all link tokens in the text.
@@ -312,7 +330,13 @@ class MarkdownParser {
   ///
   /// Returns a list of strikethrough [MarkdownToken] objects.
   List<MarkdownToken> findStrikethrough(String text) {
-    return _findByPattern(text, 'strikethrough', _patterns['strikethrough']!);
+    return _findByPattern(
+      text,
+      'strikethrough',
+      _patterns['strikethrough']!,
+      prefixLength: 2,
+      suffixLength: 2,
+    );
   }
 
   /// Find all task list tokens in the text.
@@ -381,6 +405,14 @@ class MarkdownParser {
       final hashCount = match.group(1)!.length;
       final content = match.group(2)!;
 
+      // Syntax prefix is the hashes plus any whitespace before content
+      // The Regex is `^(#{1,6})\s+(.+)$`
+      // match.start is beginning of line (hashes)
+      // Content starts at match.end - content.length?
+      // No, let's find content start relative to match
+      final contentStartRelative = match.group(0)!.lastIndexOf(content);
+      final contentStart = match.start + contentStartRelative;
+
       tokens.add(
         MarkdownToken(
           type: 'header',
@@ -388,6 +420,8 @@ class MarkdownParser {
           end: match.end,
           content: content,
           metadata: {'level': hashCount},
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: contentStart,
         ),
       );
     }
@@ -404,15 +438,59 @@ class MarkdownParser {
 
     // Find in order of specificity to handle nested styles correctly
     // Code first (most specific), then bold, then italic
-    tokens.addAll(_findByPattern(text, 'code', _patterns['code']!));
-    tokens.addAll(_findByPattern(text, 'bold', _patterns['bold']!));
-    tokens.addAll(_findByPattern(text, 'bold', _patterns['bold_underscore']!));
-    tokens.addAll(_findByPattern(text, 'italic', _patterns['italic']!));
     tokens.addAll(
-      _findByPattern(text, 'italic', _patterns['italic_underscore']!),
+      _findByPattern(
+        text,
+        'code',
+        _patterns['code']!,
+        prefixLength: 1,
+        suffixLength: 1,
+      ),
     );
     tokens.addAll(
-      _findByPattern(text, 'strikethrough', _patterns['strikethrough']!),
+      _findByPattern(
+        text,
+        'bold',
+        _patterns['bold']!,
+        prefixLength: 2,
+        suffixLength: 2,
+      ),
+    );
+    tokens.addAll(
+      _findByPattern(
+        text,
+        'bold',
+        _patterns['bold_underscore']!,
+        prefixLength: 2,
+        suffixLength: 2,
+      ),
+    );
+    tokens.addAll(
+      _findByPattern(
+        text,
+        'italic',
+        _patterns['italic']!,
+        prefixLength: 1,
+        suffixLength: 1,
+      ),
+    );
+    tokens.addAll(
+      _findByPattern(
+        text,
+        'italic',
+        _patterns['italic_underscore']!,
+        prefixLength: 1,
+        suffixLength: 1,
+      ),
+    );
+    tokens.addAll(
+      _findByPattern(
+        text,
+        'strikethrough',
+        _patterns['strikethrough']!,
+        prefixLength: 2,
+        suffixLength: 2,
+      ),
     );
 
     // Typora extended inline styles
@@ -434,6 +512,19 @@ class MarkdownParser {
       final linkText = match.group(1)!;
       final url = match.group(2)!;
 
+      // Pattern: \[ (.+?) \] \( (.+?) \)
+      // Prefix: [
+      // Suffix: ](url)
+
+      // Calculate positions
+      // Start is match.start (at '[')
+      // Content starts at match.start + 1
+      final contentStart = match.start + 1;
+      final contentEnd = contentStart + linkText.length;
+
+      // Suffix starts after content
+      // Suffix ends at match.end
+
       tokens.add(
         MarkdownToken(
           type: 'link',
@@ -441,6 +532,10 @@ class MarkdownParser {
           end: match.end,
           content: linkText,
           metadata: {'url': url},
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: contentStart,
+          syntaxSuffixStart: contentEnd,
+          syntaxSuffixEnd: match.end,
         ),
       );
     }
@@ -453,14 +548,48 @@ class MarkdownParser {
     final tokens = <MarkdownToken>[];
 
     // Find unordered lists
-    tokens.addAll(
-      _findByPattern(text, 'list_unordered', _patterns['list_unordered']!),
-    );
+    // Regex: ^[\-\*]\s+(.+)$
+    final ulPattern = _patterns['list_unordered']!;
+    for (final match in ulPattern.allMatches(text)) {
+      final content = match.group(1)!;
+
+      // Calculate syntax prefix end (start of content)
+      final contentStartRelative = match.group(0)!.lastIndexOf(content);
+      final contentStart = match.start + contentStartRelative;
+
+      tokens.add(
+        MarkdownToken(
+          type: 'list_unordered',
+          start: match.start,
+          end: match.end,
+          content: content,
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: contentStart,
+        ),
+      );
+    }
 
     // Find ordered lists
-    tokens.addAll(
-      _findByPattern(text, 'list_ordered', _patterns['list_ordered']!),
-    );
+    // Regex: ^\d+\.\s+(.+)$
+    final olPattern = _patterns['list_ordered']!;
+    for (final match in olPattern.allMatches(text)) {
+      final content = match.group(1)!;
+
+      // Calculate syntax prefix end (start of content)
+      final contentStartRelative = match.group(0)!.lastIndexOf(content);
+      final contentStart = match.start + contentStartRelative;
+
+      tokens.add(
+        MarkdownToken(
+          type: 'list_ordered',
+          start: match.start,
+          end: match.end,
+          content: content,
+          syntaxPrefixStart: match.start,
+          syntaxPrefixEnd: contentStart,
+        ),
+      );
+    }
 
     return tokens;
   }
@@ -473,18 +602,47 @@ class MarkdownParser {
   /// [text] The text to search.
   /// [type] The token type identifier.
   /// [pattern] The regex pattern to match.
+  /// [prefixLength] Fixed length of syntax prefix (e.g., 2 for '**').
+  /// [suffixLength] Fixed length of syntax suffix (e.g., 2 for '**').
   ///
   /// Returns a list of [MarkdownToken] objects matching the pattern.
-  List<MarkdownToken> _findByPattern(String text, String type, RegExp pattern) {
+  List<MarkdownToken> _findByPattern(
+    String text,
+    String type,
+    RegExp pattern, {
+    int prefixLength = 0,
+    int suffixLength = 0,
+  }) {
     final tokens = <MarkdownToken>[];
 
     for (final match in pattern.allMatches(text)) {
+      final content = match.group(1) ?? match.group(0)!;
+
+      int? syntaxPrefixStart;
+      int? syntaxPrefixEnd;
+      int? syntaxSuffixStart;
+      int? syntaxSuffixEnd;
+
+      if (prefixLength > 0) {
+        syntaxPrefixStart = match.start;
+        syntaxPrefixEnd = match.start + prefixLength;
+      }
+
+      if (suffixLength > 0) {
+        syntaxSuffixStart = match.end - suffixLength;
+        syntaxSuffixEnd = match.end;
+      }
+
       tokens.add(
         MarkdownToken(
           type: type,
           start: match.start,
           end: match.end,
-          content: match.group(1) ?? match.group(0)!,
+          content: content,
+          syntaxPrefixStart: syntaxPrefixStart,
+          syntaxPrefixEnd: syntaxPrefixEnd,
+          syntaxSuffixStart: syntaxSuffixStart,
+          syntaxSuffixEnd: syntaxSuffixEnd,
         ),
       );
     }
@@ -504,8 +662,9 @@ class MarkdownParser {
     final pattern = _patterns['task_list']!;
 
     for (final match in pattern.allMatches(text)) {
-      final checkboxState = match.group(1)!;
-      final content = match.group(2)!;
+      final bullet = match.group(1)!;
+      final checkboxState = match.group(2)!;
+      final content = match.group(3)!;
       final isChecked = checkboxState.toLowerCase() == 'x';
 
       // Calculate syntax positions
@@ -518,7 +677,11 @@ class MarkdownParser {
           start: match.start,
           end: match.end,
           content: content,
-          metadata: {'isChecked': isChecked, 'checkboxPosition': checkboxStart},
+          metadata: {
+            'isChecked': isChecked,
+            'checkboxPosition': checkboxStart,
+            'bullet': bullet,
+          },
           syntaxPrefixStart: match.start,
           syntaxPrefixEnd: checkboxEnd,
           visibility: SyntaxVisibility.hidden,
@@ -705,7 +868,7 @@ class MarkdownParser {
           type: 'horizontal_rule',
           start: match.start,
           end: match.end,
-          content: '',
+          content: match.group(0)!, // Store full content for 1:1 rendering
           metadata: {
             'char': match.group(1)![0], // First character (*, -, or _)
           },
@@ -828,7 +991,7 @@ class MarkdownParser {
           type: 'toc',
           start: match.start,
           end: match.end,
-          content: '[TOC]',
+          content: match.group(0)!, // Store raw content for 1:1 rendering
         ),
       );
     }

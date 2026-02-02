@@ -88,12 +88,82 @@ class TextSpanRenderer {
       spans.addAll(
         _buildUnstyledText(text, lastEnd, token.start, baseTextStyle),
       );
-      spans.addAll(_buildTokenWithSyntax(token, baseTextStyle, syntaxStyle));
+      spans.addAll(
+        _buildStyledTokenSpans(text, token, baseTextStyle, syntaxStyle),
+      );
       lastEnd = token.end;
     }
 
     spans.addAll(_buildUnstyledText(text, lastEnd, text.length, baseTextStyle));
     return TextSpan(style: baseTextStyle, children: spans);
+  }
+
+  /// Build text spans for a token using strict source text slicing.
+  ///
+  /// This ensures that the rendered text has exactly the same length and characters
+  /// as the source text, which is critical for correct cursor positioning.
+  List<TextSpan> _buildStyledTokenSpans(
+    String text,
+    MarkdownToken token,
+    TextStyle baseStyle,
+    TextStyle syntaxStyle,
+  ) {
+    final spans = <TextSpan>[];
+
+    // 1. Prefix
+    if (token.syntaxPrefixStart != null && token.syntaxPrefixEnd != null) {
+      final start = token.syntaxPrefixStart!.clamp(0, text.length);
+      final end = token.syntaxPrefixEnd!.clamp(0, text.length);
+
+      if (end > start) {
+        spans.add(
+          TextSpan(text: text.substring(start, end), style: syntaxStyle),
+        );
+      }
+    }
+
+    // 2. Content
+    // Determine the content range based on syntax markers or token boundaries
+    final contentStart = (token.syntaxPrefixEnd ?? token.start).clamp(
+      0,
+      text.length,
+    );
+    final contentEnd = (token.syntaxSuffixStart ?? token.end).clamp(
+      0,
+      text.length,
+    );
+
+    if (contentEnd > contentStart) {
+      // Get the style for the content from the token handler
+      // We ignore the text returned by _createSpanForToken and ONLY use the style
+      final styleSpan = _createSpanForToken(token);
+      final mergedStyle = baseStyle.merge(styleSpan.style);
+
+      spans.add(
+        TextSpan(
+          text: text.substring(contentStart, contentEnd),
+          style: mergedStyle,
+          // We can include children if needed, but composed spans usually
+          // don't work well with this slicing approach unless designed for it.
+          // For now, we assume styles are flat for this mode.
+          recognizer: styleSpan.recognizer,
+        ),
+      );
+    }
+
+    // 3. Suffix
+    if (token.syntaxSuffixStart != null && token.syntaxSuffixEnd != null) {
+      final start = token.syntaxSuffixStart!.clamp(0, text.length);
+      final end = token.syntaxSuffixEnd!.clamp(0, text.length);
+
+      if (end > start) {
+        spans.add(
+          TextSpan(text: text.substring(start, end), style: syntaxStyle),
+        );
+      }
+    }
+
+    return spans;
   }
 
   /// Build a TextSpan with hidden markdown syntax (Notion/Typora style).
@@ -178,85 +248,6 @@ class TextSpanRenderer {
   ///
   /// Creates spans for syntax prefix, the styled token content, and syntax suffix.
   /// Only includes syntax spans if the corresponding characters are present.
-  List<TextSpan> _buildTokenWithSyntax(
-    MarkdownToken token,
-    TextStyle baseStyle,
-    TextStyle syntaxStyle,
-  ) {
-    final syntaxChars = _getSyntaxCharsForToken(token);
-    final styledSpan = _createSpanForToken(token);
-    final spans = <TextSpan>[];
-
-    if (syntaxChars.prefix.isNotEmpty) {
-      spans.add(TextSpan(text: syntaxChars.prefix, style: syntaxStyle));
-    }
-
-    spans.add(
-      TextSpan(
-        text: styledSpan.text,
-        style: baseStyle.merge(styledSpan.style),
-        children: styledSpan.children,
-        recognizer: styledSpan.recognizer,
-      ),
-    );
-
-    if (syntaxChars.suffix.isNotEmpty) {
-      spans.add(TextSpan(text: syntaxChars.suffix, style: syntaxStyle));
-    }
-
-    return spans;
-  }
-
-  /// Get the syntax characters (prefix/suffix) for a token.
-  ///
-  /// Returns the markdown syntax characters that should be displayed
-  /// around the token content (e.g., '**' for bold, '#' for headers).
-  _SyntaxChars _getSyntaxCharsForToken(MarkdownToken token) {
-    switch (token.type) {
-      case 'header':
-        final level = token.metadata['level'] as int? ?? 1;
-        return _SyntaxChars(prefix: '#' * level + ' ', suffix: '');
-      case 'bold':
-        return _SyntaxChars(prefix: '**', suffix: '**');
-      case 'italic':
-        return _SyntaxChars(prefix: '*', suffix: '*');
-      case 'code':
-        return _SyntaxChars(prefix: '`', suffix: '`');
-      case 'link':
-        return _SyntaxChars(
-          prefix: '[',
-          suffix: '](${token.metadata['url'] ?? 'url'})',
-        );
-      case 'list_unordered':
-        return _SyntaxChars(prefix: '- ', suffix: '');
-      case 'list_ordered':
-        return _SyntaxChars(prefix: '1. ', suffix: '');
-      case 'strikethrough':
-        return _SyntaxChars(prefix: '~~', suffix: '~~');
-      // Typora extended
-      case 'highlight':
-        return _SyntaxChars(prefix: '==', suffix: '==');
-      case 'subscript':
-        return _SyntaxChars(prefix: '~', suffix: '~');
-      case 'superscript':
-        return _SyntaxChars(prefix: '^', suffix: '^');
-      case 'inline_math':
-        return _SyntaxChars(prefix: r'$', suffix: r'$');
-      case 'math_block':
-        return _SyntaxChars(prefix: r'$$', suffix: r'$$');
-      case 'image':
-        return _SyntaxChars(
-          prefix: '![',
-          suffix: '](${token.metadata['url'] ?? 'url'})',
-        );
-      case 'emoji':
-        return _SyntaxChars(prefix: ':', suffix: ':');
-      case 'footnote_ref':
-        return _SyntaxChars(prefix: '[^', suffix: ']');
-      default:
-        return _SyntaxChars(prefix: '', suffix: '');
-    }
-  }
 
   /// Create a TextSpan for a specific markdown token.
   ///
@@ -797,14 +788,6 @@ class TextSpanRenderer {
     '+1': '👍',
     '-1': '👎',
   };
-}
-
-/// Helper class for syntax characters.
-class _SyntaxChars {
-  final String prefix;
-  final String suffix;
-
-  const _SyntaxChars({required this.prefix, required this.suffix});
 }
 
 /// Extension to provide theme-aware renderer instances.

@@ -65,6 +65,11 @@ asterisk_editor/
 └── pubspec.yaml
 ```
 
+## Development
+For detailed developer documentation, please see:
+- [Developer Guide](docs/DEVELOPMENT.md) - Project structure, architecture, and setup.
+- [WYSIWYG Editor Internals](docs/WYSIWYG_EDITOR.md) - Deep dive into the custom editor implementation.
+
 ## Key Dependencies
 
 | Package | Purpose |
